@@ -57,6 +57,23 @@ div[data-testid="stTextInput"] > div > div {
 }
 div[data-testid="stTextInput"] label { display: none !important; }
 
+/* Search button */
+div[data-testid="stButton"] > button {
+  background-color: #4f8ef7 !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 10px !important;
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  height: 42px !important;
+  width: 100% !important;
+  cursor: pointer !important;
+  margin-top: 0 !important;
+}
+div[data-testid="stButton"] > button:hover {
+  background-color: #3a7ae0 !important;
+}
+
 /* Row container — gap between the three cards */
 div[data-testid="stHorizontalBlock"] {
   gap: 0.75rem !important;
@@ -636,12 +653,17 @@ def main():
         unsafe_allow_html=True,
     )
 
-    query = st.text_input(
-        label="search",
-        label_visibility="collapsed",
-        placeholder="🔍  Search a movie title…",
-        key="movie_search",
-    )
+    col_input, col_btn = st.columns([5, 1])
+    with col_input:
+        query = st.text_input(
+            label="search",
+            label_visibility="collapsed",
+            placeholder="🔍  Search a movie title…",
+            key="movie_search",
+        )
+    with col_btn:
+        st.markdown("<div style='height:27px'></div>", unsafe_allow_html=True)
+        st.button("Search", key="search_btn", use_container_width=True)
 
     st.markdown(
         "<div style='border-bottom:1px solid #1f2937; margin:0.4rem 0 1.4rem 0;'></div>",
@@ -746,7 +768,7 @@ def main():
         if rec.get("imdbRating"):
             crit_items.append(("IMDb", f"{rec['imdbRating']}/10"))
         if rec.get("RT_score"):
-            crit_items.append(("Rotten Tomatoes", f"{int(rec['RT_score'])}%"))
+            crit_items.append(("RT Critic", f"{int(rec['RT_score'])}%"))
         if rec.get("Metascore") and str(rec["Metascore"]) != "nan":
             crit_items.append(("Metacritic", f"{int(rec['Metascore'])}/100"))
         critics_html = ""

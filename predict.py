@@ -48,7 +48,7 @@ FEATURE_LABELS = {
     "imdbRating":      "IMDb Rating",
     "imdbVotes":       "IMDb Popularity",
     "Metascore":       "Metacritic Score",
-    "RT_score":        "Rotten Tomatoes",
+    "RT_score":        "RT Critic",
     "BoxOffice":       "Box Office",
     "Runtime":         "Runtime",
     "award_wins":      "Awards Won",
@@ -78,6 +78,12 @@ FEATURE_LABELS = {
     "country_uk":      "UK Production",
     "country_india":   "Indian Production",
     "country_other":   "International Production",
+    # parents guide
+    "pg_sex_nudity":    "PG: Sex & Nudity",
+    "pg_violence_gore": "PG: Violence & Gore",
+    "pg_profanity":     "PG: Profanity",
+    "pg_alcohol_drugs": "PG: Alcohol & Drugs",
+    "pg_intensity":     "PG: Intensity",
 }
 
 # ─── Artifact loading ─────────────────────────────────────────────────────────
