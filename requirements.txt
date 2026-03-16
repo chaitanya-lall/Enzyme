@@ -9,3 +9,6 @@ shap
 matplotlib
 joblib
 groq
+beautifulsoup4
+Pillow
+google-generativeai
