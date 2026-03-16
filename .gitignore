@@ -1,12 +1,12 @@
-# Data files
-data/
-*.csv
+# Training data (large, not needed at runtime)
+data/enriched_omdb.csv
+data/enriched_raw.csv
+data/all_consts.csv
+data/noel/enriched_omdb.csv
+data/noel/enriched_raw.csv
 
-# Model files
-models/
+# Backup folders
 models_backup_*/
-*.pkl
-*.npy
 
 # Outputs
 outputs/
