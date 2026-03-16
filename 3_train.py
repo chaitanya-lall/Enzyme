@@ -6,6 +6,8 @@ Output: models/pmtpe_model.pkl, outputs/shap_summary.png, outputs/evaluation.txt
 Features:
   - Numerics (10): imdbRating, Metascore, BoxOffice, imdbVotes, Runtime,
                    RT_score, award_wins, award_noms, oscar_win, oscar_nom
+  - Director/actor mean encoding (4): director_film_count, director_avg_rating,
+                                      actor1_film_count, actor1_avg_rating
   - Decade one-hot (replaces raw Year): decade_1950s … decade_2020s
   - Content rating one-hot: rated_G, rated_PG, rated_PG13, rated_R, rated_NR
   - Language binary: lang_english, lang_hindi, lang_other
@@ -30,7 +32,7 @@ from sklearn.preprocessing import MultiLabelBinarizer, StandardScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 from config import (
-    OMDB_CSV, MLB_PATH, SCALER_PATH, FEATURE_NAMES_PATH,
+    OMDB_CSV, RT_CSV, MLB_PATH, SCALER_PATH, FEATURE_NAMES_PATH,
     SHAP_PLOT_PATH, EVAL_PATH, SHAP_VALUES_PATH,
     TRAIN_TEST_SPLIT, RANDOM_STATE,
     SENTENCE_TRANSFORMER_MODEL, MODELS_DIR, DATA_DIR, TAG_CSV,
@@ -39,9 +41,13 @@ from config import (
 from tag_features import ALL_TAG_COLS
 import os
 
-MODEL_PATH          = os.path.join(MODELS_DIR, "pmtpe_model.pkl")
-TRAIN_META_PATH     = os.path.join(DATA_DIR,   "train_meta.pkl")
+MODEL_PATH            = os.path.join(MODELS_DIR, "pmtpe_model.pkl")
+TRAIN_META_PATH       = os.path.join(DATA_DIR,   "train_meta.pkl")
 TRAIN_EMBEDDINGS_PATH = os.path.join(MODELS_DIR, "train_plot_embeddings.npy")
+DIRECTOR_STATS_PATH   = os.path.join(MODELS_DIR, "director_stats.pkl")
+ACTOR_STATS_PATH      = os.path.join(MODELS_DIR, "actor_stats.pkl")
+STUDIO_STATS_PATH     = os.path.join(MODELS_DIR, "studio_stats.pkl")
+OVERALL_AVG_PATH      = os.path.join(MODELS_DIR, "overall_avg.pkl")
 
 NUMERIC_COLS = [
     "imdbRating", "Metascore", "BoxOffice", "imdbVotes", "Runtime", "RT_score",
@@ -62,6 +68,13 @@ LANG_COLS = ["lang_english", "lang_hindi", "lang_other"]
 
 # Country features
 COUNTRY_COLS = ["country_us", "country_uk", "country_india", "country_other"]
+
+# Director / actor / studio mean-encoding columns
+DIRECTOR_ACTOR_COLS = [
+    "director_film_count", "director_avg_rating",
+    "actor1_film_count",   "actor1_avg_rating",
+    "studio_film_count",   "studio_avg_rating",
+]
 
 
 # ─── Awards parsing ───────────────────────────────────────────────────────────
@@ -98,10 +111,13 @@ def add_award_features(df: pd.DataFrame) -> pd.DataFrame:
 # ─── Text enrichment ──────────────────────────────────────────────────────────
 
 def build_enriched_text(row) -> str:
-    """Combine crew + plot into one rich text for embedding."""
+    """Combine crew + plot into one rich text for embedding.
+    Uses Actors_RT (up to 5) when available, falls back to Actors (OMDb, up to 3-4).
+    """
     parts = []
     director = str(row.get("Director", "") or "").strip()
-    actors   = str(row.get("Actors",   "") or "").strip()
+    # Prefer RT's top-5 actor list for richer embedding signal
+    actors   = str(row.get("Actors_RT", "") or row.get("Actors", "") or "").strip()
     writer   = str(row.get("Writer",   "") or "").strip()
     plot     = str(row.get("Plot",     "") or "").strip()
 
@@ -138,6 +154,24 @@ def load_and_clean(path):
     for col in ["Genre", "Rated", "Director", "Actors", "Writer", "Language", "Country"]:
         df[col] = df[col].fillna("Unknown")
 
+    # Merge RT enrichment (top-5 cast + studio) — optional, graceful fallback
+    try:
+        rt_df = pd.read_csv(RT_CSV)[["Const", "Actors_RT", "Studio"]]
+        df = df.merge(rt_df, on="Const", how="left")
+        df["Actors_RT"] = df["Actors_RT"].fillna("")
+        df["Studio"]    = df["Studio"].fillna("")
+        rt_count = (df["Actors_RT"] != "").sum()
+        print(f"RT enrichment merged: {rt_count}/{len(df)} movies have RT actor data")
+    except FileNotFoundError:
+        print("Warning: enriched_rt.csv not found — run 2b_enrich_rt.py first. "
+              "Falling back to OMDb actors; no studio feature.")
+        df["Actors_RT"] = ""
+        df["Studio"]    = ""
+    except Exception as e:
+        print(f"Warning: RT merge failed ({e}) — falling back to OMDb actors")
+        df["Actors_RT"] = ""
+        df["Studio"]    = ""
+
     df = add_award_features(df)
     for col in ["award_wins", "award_noms", "oscar_win", "oscar_nom"]:
         df[col] = df[col].fillna(0.0)
@@ -157,7 +191,7 @@ def load_and_clean(path):
 
     # Merge Parents Guide features (if available)
     try:
-        pg_df = pd.read_csv(PARENTS_GUIDE_CSV)[
+        pg_df = pd.read_csv(PARENTS_GUIDE_CSV, keep_default_na=False, na_values=[""])[
             ["Const", "sex_nudity", "violence_gore", "profanity", "alcohol_drugs", "intensity"]
         ]
         pg_df = pg_df.rename(columns={
@@ -249,6 +283,70 @@ def encode_country(df):
     return pd.DataFrame(result, index=df.index)
 
 
+def encode_director_actor(df):
+    """
+    Leave-one-out mean encoding for primary director, top-billed actor, and studio.
+
+    Actor source priority: Actors_RT (RT, top-billed) > Actors (OMDb fallback).
+    For each movie i: count/avg are over all OTHER films, preventing data leakage.
+
+    Returns (feature_df, director_stats, actor_stats, studio_stats, overall_avg).
+    """
+    df = df.copy()
+    overall_avg = float(df["Your Rating"].mean())
+
+    df["_dir1"] = df["Director"].str.split(",").str[0].str.strip()
+    # Use RT actor1 when available, else OMDb actor1
+    df["_act1"] = df.apply(
+        lambda r: (
+            str(r.get("Actors_RT", "") or "").split(",")[0].strip()
+            or str(r.get("Actors", "") or "").split(",")[0].strip()
+        ),
+        axis=1,
+    )
+    df["_studio"] = df["Studio"].fillna("").str.strip()
+    df["_studio"] = df["_studio"].where(df["_studio"] != "", "Unknown")
+
+    def _loo(col):
+        """Leave-one-out count + avg for a grouping column."""
+        s   = df.groupby(col)["Your Rating"].transform("sum")
+        cnt = df.groupby(col)["Your Rating"].transform("count")
+        loo_cnt = cnt - 1
+        loo_avg = (s - df["Your Rating"]) / loo_cnt.replace(0, float("nan"))
+        loo_avg = loo_avg.fillna(overall_avg)
+        return loo_cnt, loo_avg
+
+    dir_loo_cnt, dir_loo_avg = _loo("_dir1")
+    act_loo_cnt, act_loo_avg = _loo("_act1")
+    stu_loo_cnt, stu_loo_avg = _loo("_studio")
+
+    feat_df = pd.DataFrame({
+        "director_film_count": dir_loo_cnt.values.astype(float),
+        "director_avg_rating": dir_loo_avg.values.astype(float),
+        "actor1_film_count":   act_loo_cnt.values.astype(float),
+        "actor1_avg_rating":   act_loo_avg.values.astype(float),
+        "studio_film_count":   stu_loo_cnt.values.astype(float),
+        "studio_avg_rating":   stu_loo_avg.values.astype(float),
+    }, index=df.index)
+
+    # Full stats dicts for inference (all data — no LOO needed for unseen films)
+    def _stats(col):
+        return (
+            df.groupby(col)["Your Rating"]
+            .agg(count="count", avg="mean")
+            .to_dict("index")
+        )
+
+    dir_stats    = _stats("_dir1")
+    act_stats    = _stats("_act1")
+    studio_stats = _stats("_studio")
+
+    print(f"  Unique directors: {len(dir_stats)}  |  actors: {len(act_stats)}  "
+          f"|  studios: {len(studio_stats)}")
+
+    return feat_df, dir_stats, act_stats, studio_stats, overall_avg
+
+
 def encode_genres(df):
     df["Genre_list"] = df["Genre"].apply(
         lambda x: [g.strip() for g in x.split(",")] if isinstance(x, str) and x != "Unknown" else []
@@ -280,6 +378,10 @@ def build_features(df):
     num_arr = scaler.fit_transform(df[NUMERIC_COLS])
     num_df = pd.DataFrame(num_arr, columns=NUMERIC_COLS, index=df.index)
 
+    # Director / actor / studio mean encoding (LOO to prevent data leakage)
+    dir_act_df, dir_stats, act_stats, studio_stats, overall_avg = encode_director_actor(df)
+    print(f"Dir/actor/studio features: {len(DIRECTOR_ACTOR_COLS)} columns")
+
     decade_df  = encode_decade(df)
     rated_df   = encode_rated(df)
     lang_df    = encode_language(df)
@@ -300,10 +402,10 @@ def build_features(df):
 
     plot_df, raw_embeddings = embed_enriched_text(df)
 
-    X = pd.concat([num_df, decade_df, rated_df, lang_df, country_df,
+    X = pd.concat([num_df, dir_act_df, decade_df, rated_df, lang_df, country_df,
                    genre_df, tag_df, pg_df, plot_df], axis=1)
     y = df["Your Rating"].astype(float)
-    return X, y, scaler, mlb, raw_embeddings
+    return X, y, scaler, mlb, raw_embeddings, dir_stats, act_stats, studio_stats, overall_avg
 
 
 # ─── Training ─────────────────────────────────────────────────────────────────
@@ -385,11 +487,16 @@ def explain(model, X_test):
 
 # ─── Save artifacts ───────────────────────────────────────────────────────────
 
-def save_artifacts(model, scaler, mlb, X, df, raw_embeddings):
+def save_artifacts(model, scaler, mlb, X, df, raw_embeddings,
+                   dir_stats, act_stats, studio_stats, overall_avg):
     joblib.dump(model,           MODEL_PATH)
     joblib.dump(scaler,          SCALER_PATH)
     joblib.dump(mlb,             MLB_PATH)
     joblib.dump(list(X.columns), FEATURE_NAMES_PATH)
+    joblib.dump(dir_stats,       DIRECTOR_STATS_PATH)
+    joblib.dump(act_stats,       ACTOR_STATS_PATH)
+    joblib.dump(studio_stats,    STUDIO_STATS_PATH)
+    joblib.dump(overall_avg,     OVERALL_AVG_PATH)
 
     meta_cols = (
         ["Const", "Title", "Your Rating", "Genre", "Director",
@@ -409,6 +516,9 @@ def save_artifacts(model, scaler, mlb, X, df, raw_embeddings):
         ("Feature list",     FEATURE_NAMES_PATH),
         ("Train meta",       TRAIN_META_PATH),
         ("Train embeddings", TRAIN_EMBEDDINGS_PATH),
+        ("Director stats",   DIRECTOR_STATS_PATH),
+        ("Actor stats",      ACTOR_STATS_PATH),
+        ("Studio stats",     STUDIO_STATS_PATH),
     ]:
         print(f"  {label:<18} → {path}")
 
@@ -417,9 +527,10 @@ def save_artifacts(model, scaler, mlb, X, df, raw_embeddings):
 
 if __name__ == "__main__":
     df = load_and_clean(OMDB_CSV)
-    X, y, scaler, mlb, raw_embeddings = build_features(df)
+    X, y, scaler, mlb, raw_embeddings, dir_stats, act_stats, studio_stats, overall_avg = build_features(df)
     model, X_train, X_test, y_train, y_test = train(X, y)
     evaluate(model, X_test, y_test)
     explain(model, X_test)
-    save_artifacts(model, scaler, mlb, X, df, raw_embeddings)
+    save_artifacts(model, scaler, mlb, X, df, raw_embeddings,
+                   dir_stats, act_stats, studio_stats, overall_avg)
     print("\n=== Chai Model Training Complete ===")

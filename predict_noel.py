@@ -12,12 +12,18 @@ import shap
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
+import os
 from config import (
     NOEL_MODEL_PATH, NOEL_SCALER_PATH, NOEL_MLB_PATH,
     NOEL_FEATURE_NAMES_PATH, NOEL_TRAIN_META_PATH, NOEL_TRAIN_EMB_PATH,
-    SENTENCE_TRANSFORMER_MODEL,
+    NOEL_MODELS_DIR, SENTENCE_TRANSFORMER_MODEL, PG_ORDINAL, PG_COLS,
 )
 from predict import parse_omdb, fetch_by_title, FEATURE_LABELS, NUMERIC_COLS, _build_enriched_text
+
+NOEL_DIRECTOR_STATS_PATH = os.path.join(NOEL_MODELS_DIR, "director_stats.pkl")
+NOEL_ACTOR_STATS_PATH    = os.path.join(NOEL_MODELS_DIR, "actor_stats.pkl")
+NOEL_STUDIO_STATS_PATH   = os.path.join(NOEL_MODELS_DIR, "studio_stats.pkl")
+NOEL_OVERALL_AVG_PATH    = os.path.join(NOEL_MODELS_DIR, "overall_avg.pkl")
 from tag_features import call_groq_tagger, encode_tags, ALL_TAG_COLS, tag_display_label
 
 _cache: dict = {}
@@ -34,6 +40,10 @@ def _load_all():
     _cache["nlp"]           = SentenceTransformer(SENTENCE_TRANSFORMER_MODEL)
     _cache["train_meta"]    = pd.read_pickle(NOEL_TRAIN_META_PATH)
     _cache["train_emb"]     = np.load(NOEL_TRAIN_EMB_PATH)
+    _cache["director_stats"] = joblib.load(NOEL_DIRECTOR_STATS_PATH) if os.path.exists(NOEL_DIRECTOR_STATS_PATH) else {}
+    _cache["actor_stats"]    = joblib.load(NOEL_ACTOR_STATS_PATH)    if os.path.exists(NOEL_ACTOR_STATS_PATH)    else {}
+    _cache["studio_stats"]   = joblib.load(NOEL_STUDIO_STATS_PATH)   if os.path.exists(NOEL_STUDIO_STATS_PATH)   else {}
+    _cache["overall_avg"]    = joblib.load(NOEL_OVERALL_AVG_PATH)    if os.path.exists(NOEL_OVERALL_AVG_PATH)    else 6.5
 
     meta = _cache["train_meta"]
     emb  = _cache["train_emb"]
@@ -49,19 +59,19 @@ def _load_all():
 
 
 def _build_single_features(rec: dict, artifacts: dict,
-                            tags_encoded: dict | None = None):
+                            tags_encoded: dict | None = None,
+                            pg_ratings: dict | None = None):
     scaler        = artifacts["scaler"]
     mlb           = artifacts["mlb"]
     nlp           = artifacts["nlp"]
     feature_names = artifacts["feature_names"]
 
-    # 1. Numerics (includes award features parsed in parse_omdb)
+    # 1. Numerics
     num_vals = {}
     for col in NUMERIC_COLS:
         v = rec.get(col)
         num_vals[col] = float(v) if v is not None else np.nan
     num_df = pd.DataFrame([num_vals])
-
     num_arr = num_df.values.astype(float)
     col_means = scaler.mean_
     for i in range(len(NUMERIC_COLS)):
@@ -70,22 +80,109 @@ def _build_single_features(rec: dict, artifacts: dict,
     num_scaled = scaler.transform(num_arr)
     num_feat = pd.DataFrame(num_scaled, columns=NUMERIC_COLS)
 
-    # 2. Genre encoding
+    # 2. Director / actor / studio mean encoding
+    director_stats = artifacts.get("director_stats", {})
+    actor_stats    = artifacts.get("actor_stats",    {})
+    studio_stats   = artifacts.get("studio_stats",   {})
+    overall_avg    = artifacts.get("overall_avg",    6.5)
+
+    director1 = str(rec.get("Director", "") or "").split(",")[0].strip()
+    actor1    = (
+        str(rec.get("Actors_RT", "") or "").split(",")[0].strip()
+        or str(rec.get("Actors", "") or "").split(",")[0].strip()
+    )
+    studio = str(rec.get("Studio", "") or "").strip()
+    if not studio or studio in ("N/A",):
+        studio = "Unknown"
+
+    d_info = director_stats.get(director1, {})
+    a_info = actor_stats.get(actor1, {})
+    s_info = studio_stats.get(studio, {})
+    dir_act_feat = pd.DataFrame([{
+        "director_film_count": float(d_info.get("count", 0)),
+        "director_avg_rating": float(d_info.get("avg",   overall_avg)),
+        "actor1_film_count":   float(a_info.get("count", 0)),
+        "actor1_avg_rating":   float(a_info.get("avg",   overall_avg)),
+        "studio_film_count":   float(s_info.get("count", 0)),
+        "studio_avg_rating":   float(s_info.get("avg",   overall_avg)),
+    }])
+
+    # 3. Decade one-hot
+    try:
+        year_raw = rec.get("Year")
+        yr = int(str(int(float(year_raw)))[:4]) if year_raw is not None else 2000
+    except Exception:
+        yr = 2000
+    decade = (yr // 10) * 10
+    decade_feat = pd.DataFrame([{
+        "decade_pre1970s": int(decade < 1970),
+        "decade_1970s":    int(decade == 1970),
+        "decade_1980s":    int(decade == 1980),
+        "decade_1990s":    int(decade == 1990),
+        "decade_2000s":    int(decade == 2000),
+        "decade_2010s":    int(decade == 2010),
+        "decade_2020s":    int(decade >= 2020),
+    }])
+
+    # 4. Content rating one-hot
+    _rated_map = {
+        "R": "R", "TV-MA": "R", "18+": "R",
+        "PG-13": "PG13", "TV-14": "PG13", "16+": "PG13",
+        "PG": "PG", "TV-PG": "PG",
+        "G": "G", "TV-G": "G",
+    }
+    rated_bucket = _rated_map.get(str(rec.get("Rated", "N/A")), "NR")
+    rated_feat = pd.DataFrame([{
+        "rated_G":    int(rated_bucket == "G"),
+        "rated_PG":   int(rated_bucket == "PG"),
+        "rated_PG13": int(rated_bucket == "PG13"),
+        "rated_R":    int(rated_bucket == "R"),
+        "rated_NR":   int(rated_bucket == "NR"),
+    }])
+
+    # 5. Language binary
+    primary_lang = (rec.get("Language") or "").split(",")[0].strip()
+    lang_feat = pd.DataFrame([{
+        "lang_english": int(primary_lang == "English"),
+        "lang_hindi":   int(primary_lang == "Hindi"),
+        "lang_other":   int(primary_lang not in ("English", "Hindi")),
+    }])
+
+    # 6. Country binary
+    country_str = rec.get("Country") or ""
+    country_feat = pd.DataFrame([{
+        "country_us":    int("United States" in country_str),
+        "country_uk":    int("United Kingdom" in country_str),
+        "country_india": int("India" in country_str),
+        "country_other": int(not any(c in country_str for c in
+                                     ("United States", "United Kingdom", "India"))),
+    }])
+
+    # 7. Genre encoding
     genres = [g.strip() for g in rec.get("Genre", "").split(",") if g.strip()]
     genre_arr = mlb.transform([genres])
     genre_feat = pd.DataFrame(genre_arr, columns=[f"genre_{c}" for c in mlb.classes_])
 
-    # 3. LLM categorical tag features
+    # 8. LLM categorical tag features
     tag_row = {col: int(tags_encoded.get(col, 0)) if tags_encoded else 0
                for col in ALL_TAG_COLS}
     tag_feat = pd.DataFrame([tag_row])
 
-    # 4. Enriched text embedding (Director + Cast + Writer + Plot)
+    # 9. Parents Guide features
+    pg_row = {}
+    for col in PG_COLS:
+        raw_key = col.replace("pg_", "")
+        val = (pg_ratings or {}).get(raw_key)
+        pg_row[col] = PG_ORDINAL.get(val, -1) if val else -1
+    pg_feat = pd.DataFrame([pg_row])
+
+    # 10. Enriched text embedding (Director + Cast + Writer + Plot)
     enriched_text = _build_enriched_text(rec)
     embedding = nlp.encode([enriched_text])
     plot_feat = pd.DataFrame(embedding, columns=[f"plot_{i}" for i in range(embedding.shape[1])])
 
-    row = pd.concat([num_feat, genre_feat, tag_feat, plot_feat], axis=1)
+    row = pd.concat([num_feat, dir_act_feat, decade_feat, rated_feat, lang_feat, country_feat,
+                     genre_feat, tag_feat, pg_feat, plot_feat], axis=1)
     row = row.reindex(columns=feature_names, fill_value=0.0)
     return row, embedding[0]
 
@@ -141,12 +238,14 @@ def format_feature_tags(contributions: list[dict], rec: dict) -> list[dict]:
         if label in seen_labels:
             continue
 
-        # For one-hot features (genre/tag), only show if the film actually has it (value == 1)
-        if (c["feature"].startswith("genre_") or c["feature"].startswith("tag_")) and c["value"] == 0:
+        # For one-hot features, only show if the film actually has that attribute (value == 1)
+        _ONE_HOT_PREFIXES = ("genre_", "tag_", "decade_", "rated_", "lang_", "country_")
+        if any(c["feature"].startswith(p) for p in _ONE_HOT_PREFIXES) and c["value"] == 0:
             continue
 
         seen_labels.add(label)
         direction = "+" if c["shap"] > 0 else "-"
+
         if c["feature"] == "imdbRating":
             raw_val = rec.get("imdbRating")
             display = f"IMDb: {raw_val}" if raw_val else "IMDb Rating"
@@ -158,7 +257,9 @@ def format_feature_tags(contributions: list[dict], rec: dict) -> list[dict]:
             display = f"Year: {int(raw_val)}" if raw_val else "Year"
         elif c["feature"] == "Metascore":
             raw_val = rec.get("Metascore")
-            display = f"Metacritic: {raw_val}" if raw_val else "Metacritic"
+            if raw_val is None or (isinstance(raw_val, float) and pd.isna(raw_val)):
+                continue
+            display = f"Metacritic: {int(raw_val)}"
         elif c["feature"] == "RT_score":
             raw_val = rec.get("RT_score")
             display = f"RT: {raw_val}%" if raw_val else "RT Score"
@@ -172,19 +273,46 @@ def format_feature_tags(contributions: list[dict], rec: dict) -> list[dict]:
             display = "Oscar Winner" if rec.get("oscar_win", 0) else "No Oscar Win"
         elif c["feature"] == "oscar_nom":
             display = "Oscar Nominated" if rec.get("oscar_nom", 0) else "No Oscar Nom"
+        elif c["feature"] == "director_avg_rating":
+            d1 = str(rec.get("Director", "") or "").split(",")[0].strip()
+            display = f"{d1}: {c['value']:.1f} avg" if d1 and d1 not in ("N/A", "Unknown") else "Director avg rating"
+        elif c["feature"] == "director_film_count":
+            d1 = str(rec.get("Director", "") or "").split(",")[0].strip()
+            display = f"{d1}: {int(c['value'])} films seen" if d1 and d1 not in ("N/A", "Unknown") else "Director films seen"
+        elif c["feature"] == "actor1_avg_rating":
+            a1 = (
+                str(rec.get("Actors_RT", "") or "").split(",")[0].strip()
+                or str(rec.get("Actors", "") or "").split(",")[0].strip()
+            )
+            display = f"{a1}: {c['value']:.1f} avg" if a1 and a1 not in ("N/A", "Unknown") else "Actor avg rating"
+        elif c["feature"] == "actor1_film_count":
+            a1 = (
+                str(rec.get("Actors_RT", "") or "").split(",")[0].strip()
+                or str(rec.get("Actors", "") or "").split(",")[0].strip()
+            )
+            display = f"{a1}: {int(c['value'])} films seen" if a1 and a1 not in ("N/A", "Unknown") else "Actor films seen"
+        elif c["feature"] == "studio_avg_rating":
+            s = str(rec.get("Studio", "") or "").strip()
+            display = f"{s}: {c['value']:.1f} avg" if s and s not in ("N/A", "Unknown", "") else "Studio avg rating"
+        elif c["feature"] == "studio_film_count":
+            s = str(rec.get("Studio", "") or "").strip()
+            display = f"{s}: {int(c['value'])} films seen" if s and s not in ("N/A", "Unknown", "") else "Studio films seen"
         else:
             display = label
+
         tags.append({"label": display, "direction": direction, "shap": c["shap"]})
         if len(tags) >= 8:
             break
     return tags
 
 
-def predict_movie_noel(rec: dict, tags_dict: dict | None = None) -> dict:
+def predict_movie_noel(rec: dict, tags_dict: dict | None = None,
+                       pg_ratings: dict | None = None) -> dict:
     """
     Run Noel's model on an already-fetched & parsed OMDb record.
     Pass the result of predict.parse_omdb() directly.
     tags_dict: {category: value} from call_groq_tagger (already called by predict_movie).
+    pg_ratings: {sex_nudity: ..., ...} from scrape_imdb_parents_guide (already called by predict_movie).
     """
     if not rec.get("Plot") or rec["Plot"] == "N/A":
         rec["Plot"] = rec.get("Title", "")
@@ -192,7 +320,7 @@ def predict_movie_noel(rec: dict, tags_dict: dict | None = None) -> dict:
     tags_encoded = encode_tags(tags_dict) if tags_dict else None
 
     artifacts = _load_all()
-    row, embedding = _build_single_features(rec, artifacts, tags_encoded)
+    row, embedding = _build_single_features(rec, artifacts, tags_encoded, pg_ratings)
 
     pred_raw   = float(artifacts["model"].predict(row)[0])
     pred_score = float(np.clip(pred_raw, 1, 10))

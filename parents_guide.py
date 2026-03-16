@@ -300,7 +300,7 @@ def load_existing() -> tuple[pd.DataFrame, set]:
     import os
     if not os.path.exists(PARENTS_GUIDE_CSV):
         return pd.DataFrame(), set()
-    df = pd.read_csv(PARENTS_GUIDE_CSV)
+    df = pd.read_csv(PARENTS_GUIDE_CSV, keep_default_na=False, na_values=[""])
     # A row is "done" if all 5 PG columns are filled with valid values
     complete_mask = df[PG_COLS].apply(lambda col: col.isin(VALID_RATINGS)).all(axis=1)
     done = set(df.loc[complete_mask, "Const"].tolist())
@@ -314,6 +314,25 @@ def save(existing_df: pd.DataFrame, new_rows: list[dict]) -> pd.DataFrame:
     combined = pd.concat([existing_df, new_df], ignore_index=True).drop_duplicates(subset=["Const"])
     combined.to_csv(PARENTS_GUIDE_CSV, index=False)
     return combined
+
+
+def cache_pg_rating(imdb_id: str, title: str, ratings: dict[str, str]) -> None:
+    """
+    Append a freshly-scraped PG rating to parents_guide.csv if not already present.
+    Called by predict.py after a live IMDb scrape so the CSV stays warm.
+    """
+    import os
+    if not imdb_id or not ratings:
+        return
+    row = {"Const": imdb_id, "Title": title, **ratings}
+    if os.path.exists(PARENTS_GUIDE_CSV):
+        df = pd.read_csv(PARENTS_GUIDE_CSV, keep_default_na=False, na_values=[""])
+        if imdb_id in df["Const"].values:
+            return  # already cached
+        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    else:
+        df = pd.DataFrame([row])
+    df.to_csv(PARENTS_GUIDE_CSV, index=False)
 
 
 def main():

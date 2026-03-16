@@ -57,23 +57,6 @@ div[data-testid="stTextInput"] > div > div {
 }
 div[data-testid="stTextInput"] label { display: none !important; }
 
-/* Search button */
-div[data-testid="stButton"] > button {
-  background-color: #4f8ef7 !important;
-  color: #ffffff !important;
-  border: none !important;
-  border-radius: 10px !important;
-  font-size: 0.95rem !important;
-  font-weight: 600 !important;
-  height: 42px !important;
-  width: 100% !important;
-  cursor: pointer !important;
-  margin-top: 0 !important;
-}
-div[data-testid="stButton"] > button:hover {
-  background-color: #3a7ae0 !important;
-}
-
 /* Row container — gap between the three cards */
 div[data-testid="stHorizontalBlock"] {
   gap: 0.75rem !important;
@@ -293,6 +276,11 @@ def _preference_stats(train_meta, rec: dict) -> dict:
     return stats
 
 
+_PERSON_PRONOUNS = {
+    "Chai": ("he", "him", "his"),
+    "Noel": ("she", "her", "her"),
+}
+
 def build_why_prompt(rec: dict, pred_score: float, match_pct: float,
                      top_pos: list, top_neg: list, similar: dict,
                      vibe: float, person: str, train_meta=None) -> str:
@@ -378,12 +366,14 @@ def build_why_prompt(rec: dict, pred_score: float, match_pct: float,
         feature_parts.append(f"{c['label']} ({c['shap']:.2f})")
     feature_list = ", ".join(feature_parts) if feature_parts else "Plot themes"
 
+    subj, obj, poss = _PERSON_PRONOUNS.get(person, ("they", "them", "their"))
+
     return f"""Write a short explanation of what {person} will likely experience watching "{title}" ({year}).
 
 Data: top drivers = {feature_list}; genre = {genre}; director = {director}; IMDb = {imdb}; synopsis = {plot[:200]}; most similar rated film = "{similar['title']}" ({similar['rating']}/10).
 
 Rules:
-- {person} has NOT seen this film.
+- {person} has NOT seen this film. {person}'s pronouns are {subj}/{obj}/{poss} — use them consistently.
 - Distinguish facts from opinions: use plain "will" for objective facts about the film ("the film will immerse {person} in..."), use "may" or "might" for {person}'s subjective reaction ("{person} may find the pacing slow").
 - Do NOT use "likely" for factual statements about the film. Reserve hedging language ("may", "might") for {person}'s opinions only.
 - Do NOT reference the predicted score or any number rating.
@@ -528,7 +518,7 @@ def load_parents_guide() -> dict[str, dict[str, str]]:
     import os
     if not os.path.exists(PARENTS_GUIDE_CSV):
         return {}
-    df = pd.read_csv(PARENTS_GUIDE_CSV)
+    df = pd.read_csv(PARENTS_GUIDE_CSV, keep_default_na=False, na_values=[""])
     result = {}
     for _, row in df.iterrows():
         const = str(row.get("Const", "")).strip()
@@ -653,17 +643,12 @@ def main():
         unsafe_allow_html=True,
     )
 
-    col_input, col_btn = st.columns([5, 1])
-    with col_input:
-        query = st.text_input(
-            label="search",
-            label_visibility="collapsed",
-            placeholder="🔍  Search a movie title…",
-            key="movie_search",
-        )
-    with col_btn:
-        st.markdown("<div style='height:27px'></div>", unsafe_allow_html=True)
-        st.button("Search", key="search_btn", use_container_width=True)
+    query = st.text_input(
+        label="search",
+        label_visibility="collapsed",
+        placeholder="🔍  Search a movie title…",
+        key="movie_search",
+    )
 
     st.markdown(
         "<div style='border-bottom:1px solid #1f2937; margin:0.4rem 0 1.4rem 0;'></div>",
@@ -689,8 +674,9 @@ def main():
     # Attach tags_dict to rec so _preference_stats() can access them
     rec["tags_dict"] = tags_dict
 
-    # Noel's prediction reuses same OMDb record and same tags — no extra API calls
-    noel_result = predict_movie_noel(rec, tags_dict=tags_dict)
+    # Noel's prediction reuses same OMDb record, tags, and PG ratings — no extra API calls
+    noel_result = predict_movie_noel(rec, tags_dict=tags_dict,
+                                     pg_ratings=result.get("pg_ratings"))
 
     chai_result = {
         "pred_score": result["pred_score"],
@@ -746,6 +732,50 @@ def main():
             for c in chips
         )
 
+        # Award badges
+        award_parts = []
+        oscar_wins = rec.get("oscar_wins", 0) or 0
+        oscar_noms = rec.get("oscar_noms", 0) or 0
+        gg_wins    = rec.get("gg_wins", 0) or 0
+        gg_noms    = rec.get("gg_noms", 0) or 0
+        if oscar_wins > 0:
+            label = f"{'🏆' * min(int(oscar_wins), 3)} {int(oscar_wins)} Oscar{'s' if oscar_wins != 1 else ''}"
+            if oscar_noms > oscar_wins:
+                label += f" / {int(oscar_noms)} nom{'s' if oscar_noms != 1 else ''}"
+            award_parts.append(
+                f"<span style='display:inline-block; background:rgba(255,215,0,0.12); "
+                f"border:1px solid rgba(255,215,0,0.35); border-radius:6px; "
+                f"padding:0.22rem 0.6rem; font-size:0.78rem; color:#FFD700; "
+                f"margin:0.25rem 0.2rem 0 0;'>{label}</span>"
+            )
+        elif oscar_noms > 0:
+            award_parts.append(
+                f"<span style='display:inline-block; background:rgba(255,215,0,0.07); "
+                f"border:1px solid rgba(255,215,0,0.2); border-radius:6px; "
+                f"padding:0.22rem 0.6rem; font-size:0.78rem; color:#b8a000; "
+                f"margin:0.25rem 0.2rem 0 0;'>"
+                f"🎬 {int(oscar_noms)} Oscar nom{'s' if oscar_noms != 1 else ''}</span>"
+            )
+        if gg_wins > 0:
+            label = f"✨ {int(gg_wins)} Golden Globe{'s' if gg_wins != 1 else ''}"
+            if gg_noms > gg_wins:
+                label += f" / {int(gg_noms)} nom{'s' if gg_noms != 1 else ''}"
+            award_parts.append(
+                f"<span style='display:inline-block; background:rgba(192,192,255,0.1); "
+                f"border:1px solid rgba(192,192,255,0.25); border-radius:6px; "
+                f"padding:0.22rem 0.6rem; font-size:0.78rem; color:#a0a8ff; "
+                f"margin:0.25rem 0.2rem 0 0;'>{label}</span>"
+            )
+        elif gg_noms > 0:
+            award_parts.append(
+                f"<span style='display:inline-block; background:rgba(192,192,255,0.06); "
+                f"border:1px solid rgba(192,192,255,0.15); border-radius:6px; "
+                f"padding:0.22rem 0.6rem; font-size:0.78rem; color:#7077c0; "
+                f"margin:0.25rem 0.2rem 0 0;'>"
+                f"🌐 {int(gg_noms)} Golden Globe nom{'s' if gg_noms != 1 else ''}</span>"
+            )
+        award_html = "".join(award_parts)
+
         # Director / Cast
         dir_html = ""
         if rec.get("Director") and rec["Director"] != "N/A":
@@ -756,7 +786,7 @@ def main():
             )
         cast_html = ""
         if rec.get("Actors") and rec["Actors"] != "N/A":
-            actors = ", ".join(rec["Actors"].split(", ")[:3])
+            actors = rec["Actors"]
             cast_html = (
                 f"<p style='margin:0.35rem 0; font-size:0.86rem; color:#9ca3af;'>"
                 f"<span style='color:#e2e8f0; font-weight:600;'>Cast</span><br>"
@@ -768,7 +798,9 @@ def main():
         if rec.get("imdbRating"):
             crit_items.append(("IMDb", f"{rec['imdbRating']}/10"))
         if rec.get("RT_score"):
-            crit_items.append(("RT Critic", f"{int(rec['RT_score'])}%"))
+            crit_items.append(("Rotten Tomatoes", f"{int(rec['RT_score'])}%"))
+        if rec.get("rt_audience") is not None:
+            crit_items.append(("RT Audience", f"{int(rec['rt_audience'])}%"))
         if rec.get("Metascore") and str(rec["Metascore"]) != "nan":
             crit_items.append(("Metacritic", f"{int(rec['Metascore'])}/100"))
         critics_html = ""
@@ -819,11 +851,14 @@ def main():
                     f"<div style='display:flex; flex-wrap:wrap; gap:0.2rem 0;'>{pills}</div>"
                 )
 
-        # Parents Guide badges
+        # Parents Guide badges — prefer live scraped data, fall back to CSV cache
         pg_html = ""
-        pg_data = load_parents_guide()
         imdb_id = rec.get("imdbID", "")
-        if imdb_id and imdb_id in pg_data:
+        _live_pg = result.get("pg_ratings") if result else None
+        pg_data = load_parents_guide()
+        _csv_pg = pg_data.get(imdb_id) if imdb_id else None
+        _pg_rec = _live_pg or _csv_pg
+        if _pg_rec:
             PG_CATEGORIES = [
                 ("sex_nudity",    "Sex & Nudity"),
                 ("violence_gore", "Violence & Gore"),
@@ -832,17 +867,17 @@ def main():
                 ("intensity",     "Intensity"),
             ]
             PG_COLORS = {
-                "None":     ("#1a3a1a", "#4ade80"),
+                "None":     ("#1a2a1a", "#6ee78a"),
                 "Mild":     ("#3a3010", "#facc15"),
                 "Moderate": ("#3a1f00", "#fb923c"),
                 "Severe":   ("#3a0a0a", "#f87171"),
             }
             rows = ""
-            pg_rec = pg_data[imdb_id]
+            pg_rec = _pg_rec
             for col_key, cat_label in PG_CATEGORIES:
-                rating = pg_rec.get(col_key, "")
-                if rating not in PG_COLORS:
-                    continue
+                raw_rating = pg_rec.get(col_key, "")
+                # Normalise: anything not in the 4 tiers (e.g. empty/"nan") → "None"
+                rating = raw_rating if raw_rating in ("Mild", "Moderate", "Severe") else "None"
                 bg, fg = PG_COLORS[rating]
                 rows += (
                     f"<div style='display:flex; align-items:center; justify-content:space-between; "
@@ -867,12 +902,12 @@ def main():
   <div style='padding:1rem 1.2rem 1.4rem 1.2rem;'>
     <h2 style='font-size:1.5rem; font-weight:800; color:#ffffff; 
                margin:0 0 0.5rem 0; line-height:1.2;'>{rec['Title']}</h2>
-    <div style='margin-bottom:0.25rem;'>{chips_html}</div>
+    <div style='margin-bottom:0.25rem;'>{chips_html}</div>{award_html}
     {dir_html}
     {cast_html}
     {critics_html}
-    {profile_html}
     {pg_html}
+    {profile_html}
   </div>
 </div>
 """

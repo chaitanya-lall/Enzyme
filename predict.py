@@ -19,16 +19,48 @@ from sklearn.preprocessing import StandardScaler
 from config import (
     OMDB_APP_KEY, OMDB_BASE_URL, OMDB_RATE_LIMIT_SLEEP,
     MODELS_DIR, DATA_DIR, SENTENCE_TRANSFORMER_MODEL,
+    PG_ORDINAL, PG_COLS,
 )
 from tag_features import call_groq_tagger, encode_tags, ALL_TAG_COLS, tag_display_label
+from parents_guide import scrape_imdb_parents_guide, cache_pg_rating
+from rt_enrichment import fetch_rt_data
 
 # Artifact paths
-MODEL_PATH          = os.path.join(MODELS_DIR, "pmtpe_model.pkl")
-SCALER_PATH         = os.path.join(MODELS_DIR, "scaler.pkl")
-MLB_PATH            = os.path.join(MODELS_DIR, "mlb_genres.pkl")
-FEATURE_NAMES_PATH  = os.path.join(MODELS_DIR, "feature_names.pkl")
-TRAIN_META_PATH     = os.path.join(DATA_DIR,   "train_meta.pkl")
-TRAIN_EMB_PATH      = os.path.join(MODELS_DIR, "train_plot_embeddings.npy")
+MODEL_PATH            = os.path.join(MODELS_DIR, "pmtpe_model.pkl")
+SCALER_PATH           = os.path.join(MODELS_DIR, "scaler.pkl")
+MLB_PATH              = os.path.join(MODELS_DIR, "mlb_genres.pkl")
+FEATURE_NAMES_PATH    = os.path.join(MODELS_DIR, "feature_names.pkl")
+TRAIN_META_PATH       = os.path.join(DATA_DIR,   "train_meta.pkl")
+TRAIN_EMB_PATH        = os.path.join(MODELS_DIR, "train_plot_embeddings.npy")
+DIRECTOR_STATS_PATH   = os.path.join(MODELS_DIR, "director_stats.pkl")
+ACTOR_STATS_PATH      = os.path.join(MODELS_DIR, "actor_stats.pkl")
+STUDIO_STATS_PATH     = os.path.join(MODELS_DIR, "studio_stats.pkl")
+OVERALL_AVG_PATH      = os.path.join(MODELS_DIR, "overall_avg.pkl")
+
+RT_AUD_PATH   = os.path.join(DATA_DIR, "rt_audience_scores.json")
+AWARDS_PATH   = os.path.join(DATA_DIR, "movie_awards.json")
+
+_rt_aud_cache: dict | None = None
+_awards_cache: dict | None = None
+
+
+def _get_extra_data() -> tuple[dict, dict]:
+    import json
+    global _rt_aud_cache, _awards_cache
+    if _rt_aud_cache is None:
+        try:
+            with open(RT_AUD_PATH) as f:
+                _rt_aud_cache = json.load(f)
+        except FileNotFoundError:
+            _rt_aud_cache = {}
+    if _awards_cache is None:
+        try:
+            with open(AWARDS_PATH) as f:
+                _awards_cache = json.load(f)
+        except FileNotFoundError:
+            _awards_cache = {}
+    return _rt_aud_cache, _awards_cache
+
 
 NUMERIC_COLS = [
     "imdbRating", "Metascore", "BoxOffice", "imdbVotes", "Runtime", "RT_score",
@@ -42,13 +74,18 @@ DECADE_COLS  = [
 RATED_COLS   = ["rated_G", "rated_PG", "rated_PG13", "rated_R", "rated_NR"]
 LANG_COLS    = ["lang_english", "lang_hindi", "lang_other"]
 COUNTRY_COLS = ["country_us", "country_uk", "country_india", "country_other"]
+DIRECTOR_ACTOR_COLS = [
+    "director_film_count", "director_avg_rating",
+    "actor1_film_count",   "actor1_avg_rating",
+    "studio_film_count",   "studio_avg_rating",
+]
 
 # Human-readable labels for feature names shown in the UI
 FEATURE_LABELS = {
     "imdbRating":      "IMDb Rating",
     "imdbVotes":       "IMDb Popularity",
     "Metascore":       "Metacritic Score",
-    "RT_score":        "RT Critic",
+    "RT_score":        "Rotten Tomatoes",
     "BoxOffice":       "Box Office",
     "Runtime":         "Runtime",
     "award_wins":      "Awards Won",
@@ -78,12 +115,13 @@ FEATURE_LABELS = {
     "country_uk":      "UK Production",
     "country_india":   "Indian Production",
     "country_other":   "International Production",
-    # parents guide
-    "pg_sex_nudity":    "PG: Sex & Nudity",
-    "pg_violence_gore": "PG: Violence & Gore",
-    "pg_profanity":     "PG: Profanity",
-    "pg_alcohol_drugs": "PG: Alcohol & Drugs",
-    "pg_intensity":     "PG: Intensity",
+    # director / actor / studio mean encoding
+    "director_film_count": "Director: films seen",
+    "director_avg_rating": "Director: avg rating",
+    "actor1_film_count":   "Actor: films seen",
+    "actor1_avg_rating":   "Actor: avg rating",
+    "studio_film_count":   "Studio: films seen",
+    "studio_avg_rating":   "Studio: avg rating",
 }
 
 # ─── Artifact loading ─────────────────────────────────────────────────────────
@@ -101,6 +139,10 @@ def _load_all():
     _cache["nlp"]           = SentenceTransformer(SENTENCE_TRANSFORMER_MODEL)
     _cache["train_meta"]    = pd.read_pickle(TRAIN_META_PATH)
     _cache["train_emb"]     = np.load(TRAIN_EMB_PATH)
+    _cache["director_stats"] = joblib.load(DIRECTOR_STATS_PATH) if os.path.exists(DIRECTOR_STATS_PATH) else {}
+    _cache["actor_stats"]    = joblib.load(ACTOR_STATS_PATH)    if os.path.exists(ACTOR_STATS_PATH)    else {}
+    _cache["studio_stats"]   = joblib.load(STUDIO_STATS_PATH)   if os.path.exists(STUDIO_STATS_PATH)   else {}
+    _cache["overall_avg"]    = joblib.load(OVERALL_AVG_PATH)    if os.path.exists(OVERALL_AVG_PATH)    else 6.5
 
     meta = _cache["train_meta"]
     emb  = _cache["train_emb"]
@@ -184,10 +226,12 @@ def _parse_awards(awards_str) -> dict:
 
 
 def _build_enriched_text(rec: dict) -> str:
-    """Combine Director + Cast + Writer + Plot into one text for embedding."""
+    """Combine Director + Cast + Writer + Plot into one text for embedding.
+    Uses Actors_RT (up to 5) when available, falls back to Actors (OMDb).
+    """
     parts = []
     director = str(rec.get("Director", "") or "").strip()
-    actors   = str(rec.get("Actors",   "") or "").strip()
+    actors   = str(rec.get("Actors_RT", "") or rec.get("Actors", "") or "").strip()
     writer   = str(rec.get("Writer",   "") or "").strip()
     plot     = str(rec.get("Plot",     "") or "").strip()
     if director and director not in ("N/A", "Unknown"):
@@ -236,7 +280,8 @@ def parse_omdb(raw: dict) -> dict:
 # ─── Feature engineering (single movie) ──────────────────────────────────────
 
 def _build_single_features(rec: dict, artifacts: dict,
-                            tags_encoded: dict | None = None) -> tuple:
+                            tags_encoded: dict | None = None,
+                            pg_ratings: dict | None = None) -> tuple:
     """Build the full feature vector for one movie, aligned to training columns."""
     scaler        = artifacts["scaler"]
     mlb           = artifacts["mlb"]
@@ -257,7 +302,36 @@ def _build_single_features(rec: dict, artifacts: dict,
     num_scaled = scaler.transform(num_arr)
     num_feat = pd.DataFrame(num_scaled, columns=NUMERIC_COLS)
 
-    # 2. Decade one-hot (replaces raw Year)
+    # 2. Director / actor / studio mean encoding (look up in training stats)
+    director_stats = artifacts.get("director_stats", {})
+    actor_stats    = artifacts.get("actor_stats",    {})
+    studio_stats   = artifacts.get("studio_stats",   {})
+    overall_avg    = artifacts.get("overall_avg",    6.5)
+
+    director1 = str(rec.get("Director", "") or "").split(",")[0].strip()
+    # Prefer RT actor1 (top-billed from RT), fall back to OMDb actor1
+    actor1    = (
+        str(rec.get("Actors_RT", "") or "").split(",")[0].strip()
+        or str(rec.get("Actors", "") or "").split(",")[0].strip()
+    )
+    studio    = str(rec.get("Studio", "") or "").strip()
+    if not studio or studio in ("N/A",):
+        studio = "Unknown"
+
+    d_info = director_stats.get(director1, {})
+    a_info = actor_stats.get(actor1, {})
+    s_info = studio_stats.get(studio, {})
+    dir_act_row = {
+        "director_film_count": float(d_info.get("count", 0)),
+        "director_avg_rating": float(d_info.get("avg",   overall_avg)),
+        "actor1_film_count":   float(a_info.get("count", 0)),
+        "actor1_avg_rating":   float(a_info.get("avg",   overall_avg)),
+        "studio_film_count":   float(s_info.get("count", 0)),
+        "studio_avg_rating":   float(s_info.get("avg",   overall_avg)),
+    }
+    dir_act_feat = pd.DataFrame([dir_act_row])
+
+    # 3. Decade one-hot (replaces raw Year)
     try:
         year_raw = rec.get("Year")
         yr = int(str(int(float(year_raw)))[:4]) if year_raw is not None else 2000
@@ -322,14 +396,22 @@ def _build_single_features(rec: dict, artifacts: dict,
                for col in ALL_TAG_COLS}
     tag_feat = pd.DataFrame([tag_row])
 
-    # 8. Enriched text embedding (Director + Cast + Writer + Plot)
+    # 8. Parents Guide features
+    pg_row = {}
+    for col in PG_COLS:
+        raw_key = col.replace("pg_", "")  # e.g. pg_sex_nudity → sex_nudity
+        val = (pg_ratings or {}).get(raw_key)
+        pg_row[col] = PG_ORDINAL.get(val, -1) if val else -1
+    pg_feat = pd.DataFrame([pg_row])
+
+    # 9. Enriched text embedding (Director + Cast + Writer + Plot)
     enriched_text = _build_enriched_text(rec)
     embedding = nlp.encode([enriched_text])
     plot_feat = pd.DataFrame(embedding, columns=[f"plot_{i}" for i in range(embedding.shape[1])])
 
-    # 9. Combine & align columns
-    row = pd.concat([num_feat, decade_feat, rated_feat, lang_feat, country_feat,
-                     genre_feat, tag_feat, plot_feat], axis=1)
+    # 10. Combine & align columns
+    row = pd.concat([num_feat, dir_act_feat, decade_feat, rated_feat, lang_feat, country_feat,
+                     genre_feat, tag_feat, pg_feat, plot_feat], axis=1)
     row = row.reindex(columns=feature_names, fill_value=0.0)
 
     return row, embedding[0]
@@ -479,8 +561,11 @@ def format_feature_tags(contributions: list[dict], rec: dict) -> list[dict]:
         if label in seen_labels:
             continue
 
-        # For one-hot features (genre/tag), only show if the film actually has it (value == 1)
-        if (c["feature"].startswith("genre_") or c["feature"].startswith("tag_")) and c["value"] == 0:
+        # For one-hot features, only show if the film actually has that attribute (value == 1).
+        # Covers genre_, tag_, decade_, rated_, lang_, country_ — avoids showing e.g.
+        # "2020s Film" or "Rated PG-13" for films that are NOT those things.
+        _ONE_HOT_PREFIXES = ("genre_", "tag_", "decade_", "rated_", "lang_", "country_")
+        if any(c["feature"].startswith(p) for p in _ONE_HOT_PREFIXES) and c["value"] == 0:
             continue
 
         seen_labels.add(label)
@@ -515,6 +600,31 @@ def format_feature_tags(contributions: list[dict], rec: dict) -> list[dict]:
             display = "Oscar Winner" if rec.get("oscar_win", 0) else "No Oscar Win"
         elif c["feature"] == "oscar_nom":
             display = "Oscar Nominated" if rec.get("oscar_nom", 0) else "No Oscar Nom"
+        elif c["feature"] == "director_avg_rating":
+            d1 = str(rec.get("Director", "") or "").split(",")[0].strip()
+            cnt = int(c["value"] if c["value"] >= 1 else 0)
+            display = f"{d1}: {c['value']:.1f} avg" if d1 and d1 not in ("N/A", "Unknown") else "Director avg rating"
+        elif c["feature"] == "director_film_count":
+            d1 = str(rec.get("Director", "") or "").split(",")[0].strip()
+            display = f"{d1}: {int(c['value'])} films seen" if d1 and d1 not in ("N/A", "Unknown") else "Director films seen"
+        elif c["feature"] == "actor1_avg_rating":
+            a1 = (
+                str(rec.get("Actors_RT", "") or "").split(",")[0].strip()
+                or str(rec.get("Actors", "") or "").split(",")[0].strip()
+            )
+            display = f"{a1}: {c['value']:.1f} avg" if a1 and a1 not in ("N/A", "Unknown") else "Actor avg rating"
+        elif c["feature"] == "actor1_film_count":
+            a1 = (
+                str(rec.get("Actors_RT", "") or "").split(",")[0].strip()
+                or str(rec.get("Actors", "") or "").split(",")[0].strip()
+            )
+            display = f"{a1}: {int(c['value'])} films seen" if a1 and a1 not in ("N/A", "Unknown") else "Actor films seen"
+        elif c["feature"] == "studio_avg_rating":
+            s = str(rec.get("Studio", "") or "").strip()
+            display = f"{s}: {c['value']:.1f} avg" if s and s not in ("N/A", "Unknown", "") else "Studio avg rating"
+        elif c["feature"] == "studio_film_count":
+            s = str(rec.get("Studio", "") or "").strip()
+            display = f"{s}: {int(c['value'])} films seen" if s and s not in ("N/A", "Unknown", "") else "Studio films seen"
         else:
             display = label
 
@@ -542,17 +652,46 @@ def predict_movie(title: str) -> dict | None:
     if not rec.get("Plot") or rec["Plot"] == "N/A":
         rec["Plot"] = rec.get("Title", title)
 
+    # 1a. Attach RT audience score + IMDb-scraped awards for UI display
+    imdb_id = rec.get("imdbID", "")
+    if imdb_id:
+        rt_aud, awards = _get_extra_data()
+        rec["rt_audience"] = rt_aud.get(imdb_id)
+        aw = awards.get(imdb_id) or {}
+        rec["oscar_wins"] = aw.get("oscar_wins", 0)
+        rec["oscar_noms"] = aw.get("oscar_noms", 0)
+        rec["gg_wins"]    = aw.get("gg_wins", 0)
+        rec["gg_noms"]    = aw.get("gg_noms", 0)
+
+    # 1b. RT enrichment: top-5 cast + studio (best-effort, ~0.5s)
+    try:
+        rt_year = int(str(rec.get("Year") or 2000).split(".")[0])
+        rt_data = fetch_rt_data(rec["Title"], rt_year, sleep=True)
+    except Exception:
+        rt_data = None
+    if rt_data:
+        rec["Actors_RT"] = ", ".join(rt_data["cast_top5"])
+        rec["Studio"]    = rt_data["studio"] or ""
+    else:
+        rec["Actors_RT"] = ""
+        rec["Studio"]    = ""
+
     # 2. LLM tag inference
     tags_dict    = call_groq_tagger(rec)
     tags_encoded = encode_tags(tags_dict)
 
-    # 3. Load artifacts
+    # 3. Scrape IMDb Parents Guide and cache to CSV for future lookups
+    pg_ratings = scrape_imdb_parents_guide(rec.get("imdbID", ""))
+    if pg_ratings:
+        cache_pg_rating(rec.get("imdbID", ""), rec.get("Title", ""), pg_ratings)
+
+    # 4. Load artifacts
     artifacts = _load_all()
 
-    # 4. Build features
-    row, embedding = _build_single_features(rec, artifacts, tags_encoded)
+    # 5. Build features
+    row, embedding = _build_single_features(rec, artifacts, tags_encoded, pg_ratings)
 
-    # 5. Predict
+    # 6. Predict
     pred_raw = float(artifacts["model"].predict(row)[0])
     pred_score = float(np.clip(pred_raw, 1, 10))
     match_pct  = round(pred_score / 10 * 100, 1)
@@ -585,4 +724,5 @@ def predict_movie(title: str) -> dict | None:
         "top_pos":       top_pos,
         "top_neg":       top_neg,
         "embedding":     embedding,
+        "pg_ratings":    pg_ratings,   # {sex_nudity: ..., ...} or None
     }
