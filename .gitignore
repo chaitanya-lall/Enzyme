@@ -1,0 +1,28 @@
+# Data files
+data/
+*.csv
+
+# Model files
+models/
+models_backup_*/
+*.pkl
+*.npy
+
+# Outputs
+outputs/
+
+# Logs
+*.log
+streamlit.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Claude Code config (may contain API keys)
+.claude/
+
+# macOS
+.DS_Store
