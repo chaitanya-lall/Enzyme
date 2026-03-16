@@ -24,5 +24,8 @@ __pycache__/
 # Claude Code config (may contain API keys)
 .claude/
 
+# Config with real API keys — never commit this
+config.py
+
 # macOS
 .DS_Store

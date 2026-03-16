@@ -1,14 +1,15 @@
 import os
 
-# OMDb API
-OMDB_API_KEY      = "520cb419"  # Chai's training key 1
-OMDB_API_KEY_2    = "376343fa"  # Chai's training key 2 (fallback)
-OMDB_NOEL_KEY     = "790c5b7f"  # Noel's training key
-OMDB_APP_KEY      = "790c5b7f"  # live website key (switched; 950975ba limit reached)
+# OMDb API — get a free key at https://www.omdbapi.com/apikey.aspx
+OMDB_API_KEY      = "your_omdb_key_1"
+OMDB_API_KEY_2    = "your_omdb_key_2"       # fallback
+OMDB_NOEL_KEY     = "your_omdb_noel_key"
+OMDB_APP_KEY      = "your_omdb_app_key"     # live website key
 
-# AI narrative key
-GEMINI_API_KEY    = "AIzaSyDPJwYKktWJUOU6P7Zk2LPZR_FaFvR5gx4"
-GROQ_API_KEY      = "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"
+# AI narrative keys
+GEMINI_API_KEY    = "your_gemini_api_key"   # https://aistudio.google.com
+GROQ_API_KEY      = "your_groq_api_key"     # https://console.groq.com
+
 OMDB_BASE_URL = "https://www.omdbapi.com/"
 OMDB_RATE_LIMIT_SLEEP = 0.25  # seconds between requests (free tier safe)
 OMDB_DAILY_LIMIT = 1000        # free tier cap
@@ -19,12 +20,12 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
 
-NUMBERS_FILE = "/Users/chaitanya.lall/Documents/Chai IMDb rankings.numbers"
+NUMBERS_FILE = "/path/to/your/IMDb ratings.numbers"
 RAW_CSV = os.path.join(DATA_DIR, "enriched_raw.csv")
 OMDB_CSV = os.path.join(DATA_DIR, "enriched_omdb.csv")
 
-# Noel's paths
-NOEL_NUMBERS_FILE = "/Users/chaitanya.lall/Documents/Noel's Ratings.numbers"
+# Second user's paths (optional)
+NOEL_NUMBERS_FILE = "/path/to/second_user/ratings.numbers"
 NOEL_DATA_DIR    = os.path.join(BASE_DIR, "data",    "noel")
 NOEL_MODELS_DIR  = os.path.join(BASE_DIR, "models",  "noel")
 NOEL_OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs", "noel")
@@ -72,7 +73,6 @@ EARLY_STOPPING_ROUNDS = 20
 SENTENCE_TRANSFORMER_MODEL = "all-MiniLM-L6-v2"
 
 # LLM Categorical Tag Taxonomy (up to 2 tags per category per movie)
-# Derived from movies_tagged_final.json — 1463 movies, 111 one-hot columns
 TAG_TAXONOMY = {
     "social_context": [
         "Mainstream Blockbuster", "Award Season Contender", "Legacy Franchise",
