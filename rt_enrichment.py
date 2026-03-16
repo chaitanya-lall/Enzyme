@@ -93,9 +93,9 @@ def fetch_rt_data(title: str, year: int, sleep: bool = True) -> dict | None:
             if resp.status_code != 200:
                 continue
             parsed = _parse_page(resp.text)
-            # Skip if we landed on the wrong movie (year off by > 1)
+            # Skip if we landed on the wrong movie (require year present and within ±1)
             rt_year = parsed.get("year")
-            if rt_year is not None and abs(rt_year - year) > 1:
+            if rt_year is None or abs(rt_year - year) > 1:
                 continue
             if parsed["cast"]:
                 return {

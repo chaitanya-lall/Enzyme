@@ -85,7 +85,7 @@ FEATURE_LABELS = {
     "imdbRating":      "IMDb Rating",
     "imdbVotes":       "IMDb Popularity",
     "Metascore":       "Metacritic Score",
-    "RT_score":        "Rotten Tomatoes",
+    "RT_score":        "RT Critic",
     "BoxOffice":       "Box Office",
     "Runtime":         "Runtime",
     "award_wins":      "Awards Won",
@@ -116,12 +116,18 @@ FEATURE_LABELS = {
     "country_india":   "Indian Production",
     "country_other":   "International Production",
     # director / actor / studio mean encoding
-    "director_film_count": "Director: films seen",
-    "director_avg_rating": "Director: avg rating",
-    "actor1_film_count":   "Actor: films seen",
-    "actor1_avg_rating":   "Actor: avg rating",
-    "studio_film_count":   "Studio: films seen",
-    "studio_avg_rating":   "Studio: avg rating",
+    "director_film_count": "Director: Films Seen",
+    "director_avg_rating": "Director: Avg Rating",
+    "actor1_film_count":   "Actor: Films Seen",
+    "actor1_avg_rating":   "Actor: Avg Rating",
+    "studio_film_count":   "Studio: Films Seen",
+    "studio_avg_rating":   "Studio: Avg Rating",
+    # parents guide
+    "pg_sex_nudity":    "PG: Sex & Nudity",
+    "pg_violence_gore": "PG: Violence & Gore",
+    "pg_profanity":     "PG: Profanity",
+    "pg_alcohol_drugs": "PG: Alcohol & Drugs",
+    "pg_intensity":     "PG: Intensity",
 }
 
 # ─── Artifact loading ─────────────────────────────────────────────────────────
@@ -589,7 +595,7 @@ def format_feature_tags(contributions: list[dict], rec: dict) -> list[dict]:
             display = f"Metacritic: {int(raw_val)}"
         elif c["feature"] == "RT_score":
             raw_val = rec.get("RT_score")
-            display = f"RT: {raw_val}%" if raw_val else "RT Score"
+            display = f"RT Critic: {raw_val}%" if raw_val else "RT Critic"
         elif c["feature"] == "award_wins":
             raw_val = rec.get("award_wins", 0)
             display = f"Awards: {int(raw_val)} wins" if raw_val else "Award Wins"
@@ -603,28 +609,28 @@ def format_feature_tags(contributions: list[dict], rec: dict) -> list[dict]:
         elif c["feature"] == "director_avg_rating":
             d1 = str(rec.get("Director", "") or "").split(",")[0].strip()
             cnt = int(c["value"] if c["value"] >= 1 else 0)
-            display = f"{d1}: {c['value']:.1f} avg" if d1 and d1 not in ("N/A", "Unknown") else "Director avg rating"
+            display = f"{d1}: {c['value']:.1f} avg" if d1 and d1 not in ("N/A", "Unknown") else "Director: Avg Rating"
         elif c["feature"] == "director_film_count":
             d1 = str(rec.get("Director", "") or "").split(",")[0].strip()
-            display = f"{d1}: {int(c['value'])} films seen" if d1 and d1 not in ("N/A", "Unknown") else "Director films seen"
+            display = f"{d1}: {int(c['value'])} films seen" if d1 and d1 not in ("N/A", "Unknown") else "Director: Films Seen"
         elif c["feature"] == "actor1_avg_rating":
             a1 = (
                 str(rec.get("Actors_RT", "") or "").split(",")[0].strip()
                 or str(rec.get("Actors", "") or "").split(",")[0].strip()
             )
-            display = f"{a1}: {c['value']:.1f} avg" if a1 and a1 not in ("N/A", "Unknown") else "Actor avg rating"
+            display = f"{a1}: {c['value']:.1f} avg" if a1 and a1 not in ("N/A", "Unknown") else "Actor: Avg Rating"
         elif c["feature"] == "actor1_film_count":
             a1 = (
                 str(rec.get("Actors_RT", "") or "").split(",")[0].strip()
                 or str(rec.get("Actors", "") or "").split(",")[0].strip()
             )
-            display = f"{a1}: {int(c['value'])} films seen" if a1 and a1 not in ("N/A", "Unknown") else "Actor films seen"
+            display = f"{a1}: {int(c['value'])} films seen" if a1 and a1 not in ("N/A", "Unknown") else "Actor: Films Seen"
         elif c["feature"] == "studio_avg_rating":
             s = str(rec.get("Studio", "") or "").strip()
-            display = f"{s}: {c['value']:.1f} avg" if s and s not in ("N/A", "Unknown", "") else "Studio avg rating"
+            display = f"{s}: {c['value']:.1f} avg" if s and s not in ("N/A", "Unknown", "") else "Studio: Avg Rating"
         elif c["feature"] == "studio_film_count":
             s = str(rec.get("Studio", "") or "").strip()
-            display = f"{s}: {int(c['value'])} films seen" if s and s not in ("N/A", "Unknown", "") else "Studio films seen"
+            display = f"{s}: {int(c['value'])} films seen" if s and s not in ("N/A", "Unknown", "") else "Studio: Films Seen"
         else:
             display = label
 
