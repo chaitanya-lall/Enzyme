@@ -197,6 +197,7 @@ def call_gemini_tagger(rec: dict, max_retries: int = 6) -> dict[str, list[str]]:
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
                         max_output_tokens=800,
+                        temperature=0.0,
                         thinking_config=types.ThinkingConfig(thinking_budget=0),
                     ),
                 )
@@ -248,6 +249,7 @@ def call_groq_tagger(rec: dict) -> dict[str, list[str]]:
             model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=200,
+            temperature=0.0,
             response_format={"type": "json_object"},
         )
         raw = resp.choices[0].message.content
