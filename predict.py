@@ -6,7 +6,9 @@ All artifact loading is lazy and cached for Streamlit performance.
 from __future__ import annotations
 
 import os
+import re
 import time
+import concurrent.futures
 import numpy as np
 import pandas as pd
 import joblib
@@ -196,33 +198,130 @@ def _parse_rt(ratings_list):
     return None
 
 
-def fetch_by_title(title: str) -> dict | None:
-    """Search OMDb by movie title. Returns raw OMDb JSON or None."""
-    params = {"t": title, "plot": "full", "apikey": OMDB_APP_KEY}
+def _normalize_title(t: str) -> str:
+    """
+    Normalize a movie title for fuzzy OMDb lookup:
+    - Remove mid-word apostrophes/curly-quotes  ("it's" → "its", "schindler's" → "schindlers")
+    - Replace hyphens, commas, colons, exclamations, periods, semicolons → space
+    - Collapse extra spaces
+    """
+    t = re.sub(r"(?<=[A-Za-z])[''`](?=[A-Za-z])", "", t)   # mid-word apostrophes
+    t = re.sub(r"[\-,!?\.;:]+", " ", t)                      # other punctuation → space
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+def _title_variants(query: str) -> list[str]:
+    """
+    Return alternate search strings derived from *query* so OMDb finds
+    titles whose punctuation the user omitted or changed.
+    Includes:
+      1. Punctuation-stripped form (always tried)
+      2. Word-split forms for run-together words like "spiderman" → "spider man"
+    """
+    vs: set[str] = set()
+    norm = _normalize_title(query)
+    if norm != query:
+        vs.add(norm)
+    # For each long all-alpha word try inserting a space at several positions
+    # so "spiderman" → "spider man", "ironman" → "iron man", etc.
+    base = norm if norm else query
+    for word in base.split():
+        if len(word) > 5 and word.isalpha():
+            for pos in range(max(3, len(word) - 4), min(len(word) - 2, len(word))):
+                candidate = base.replace(word, word[:pos] + " " + word[pos:], 1)
+                if candidate != base:
+                    vs.add(candidate)
+    return list(vs)
+
+
+def search_omdb(title: str) -> list[dict]:
+    """Search OMDb for multiple matches, tolerating missing/extra punctuation and run-together words."""
+
+    def _search(t):
+        try:
+            resp = requests.get(OMDB_BASE_URL, params={"s": t, "type": "movie", "apikey": OMDB_APP_KEY}, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("Search", []) if data.get("Response") != "False" else []
+        except Exception:
+            return []
+
+    def _merge(results: list, extra: list, seen: set) -> list:
+        for r in extra:
+            if r.get("imdbID") and r["imdbID"] not in seen:
+                seen.add(r["imdbID"])
+                results.append(r)
+        return results
+
+    # Primary search — deduplicate OMDb's own response first
+    seen: set[str] = set()
+    results: list = []
+    for r in _search(title):
+        if r.get("imdbID") and r["imdbID"] not in seen:
+            seen.add(r["imdbID"])
+            results.append(r)
+
+    # Run variant searches in parallel and merge new hits
+    variants = _title_variants(title)
+    if variants:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(variants), 6)) as ex:
+            for hits in ex.map(_search, variants):
+                _merge(results, hits, seen)
+
+    return [{"title": r["Title"], "year": r.get("Year", ""), "imdbID": r["imdbID"]}
+            for r in results if r.get("imdbID")]
+
+
+def fetch_by_imdb_id(imdb_id: str) -> dict | None:
+    """Fetch a movie from OMDb by IMDb ID."""
     try:
-        resp = requests.get(OMDB_BASE_URL, params=params, timeout=10)
+        resp = requests.get(OMDB_BASE_URL, params={"i": imdb_id, "plot": "full", "apikey": OMDB_APP_KEY}, timeout=10)
         resp.raise_for_status()
         data = resp.json()
-        if data.get("Response") == "False":
-            err = data.get("Error", "Not found")
-            print(f"OMDb: {err}")
-            return None
-        return data
+        return data if data.get("Response") != "False" else None
     except Exception as e:
         print(f"OMDb error: {e}")
         return None
 
 
-import re as _re
+def fetch_by_title(title: str) -> dict | None:
+    """Search OMDb by movie title. Returns raw OMDb JSON or None."""
+    def _omdb_get(t):
+        try:
+            resp = requests.get(OMDB_BASE_URL, params={"t": t, "plot": "full", "apikey": OMDB_APP_KEY}, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            return data if data.get("Response") != "False" else None
+        except Exception as e:
+            print(f"OMDb error: {e}")
+            return None
+
+    # 1. Try exact title
+    result = _omdb_get(title)
+    if result:
+        return result
+
+    # 2. Normalize punctuation (remove mid-word apostrophes, replace hyphens/commas/etc. with space)
+    normalized = _normalize_title(title)
+    if normalized != title:
+        result = _omdb_get(normalized)
+        if result:
+            return result
+
+    print(f"OMDb: could not find '{title}'")
+    return None
+
+
 
 def _parse_awards(awards_str) -> dict:
     """Parse OMDb Awards string → numeric signals."""
     s = str(awards_str) if awards_str else ""
-    oscar_win = 1 if _re.search(r'\bwon\b.*\boscar', s, _re.IGNORECASE) else 0
-    oscar_nom = 1 if (_re.search(r'\bnominat', s, _re.IGNORECASE) and
-                      _re.search(r'\boscar', s, _re.IGNORECASE)) else 0
-    wins = sum(int(x) for x in _re.findall(r'(\d+)\s+win', s, _re.IGNORECASE))
-    noms = sum(int(x) for x in _re.findall(r'(\d+)\s+nomination', s, _re.IGNORECASE))
+    oscar_win = 1 if re.search(r'\bwon\b.*\boscar', s, re.IGNORECASE) else 0
+    oscar_nom = 1 if (re.search(r'\bnominat', s, re.IGNORECASE) and
+                      re.search(r'\boscar', s, re.IGNORECASE)) else 0
+    wins = sum(int(x) for x in re.findall(r'(\d+)\s+win', s, re.IGNORECASE))
+    noms = sum(int(x) for x in re.findall(r'(\d+)\s+nomination', s, re.IGNORECASE))
     return {
         "award_wins": float(wins),
         "award_noms": float(noms),
@@ -278,6 +377,7 @@ def parse_omdb(raw: dict) -> dict:
         "Poster":     raw.get("Poster", ""),
         "Type":       raw.get("Type", ""),
         "imdbID":     raw.get("imdbID", ""),
+        "Production": raw.get("Production", ""),
     }
     rec.update(award_feats)
     return rec
@@ -518,11 +618,31 @@ def compute_vibe_match(embedding: np.ndarray, artifacts: dict) -> float:
 
 # ─── SHAP interpretation ──────────────────────────────────────────────────────
 
-def get_shap_contributions(row: pd.DataFrame, artifacts: dict) -> list[dict]:
+def get_shap_contributions(row: pd.DataFrame, artifacts: dict, rec: dict = None) -> list[dict]:
     """Return list of {feature, label, value, shap} sorted by |shap| desc."""
     explainer = artifacts["explainer"]
     shap_vals = explainer.shap_values(row)[0]
     feature_names = artifacts["feature_names"]
+
+    rec = rec or {}
+    director1 = str(rec.get("Director", "") or "").split(",")[0].strip() or "Director"
+    actor1 = (
+        str(rec.get("Actors_RT", "") or "").split(",")[0].strip()
+        or str(rec.get("Actors", "") or "").split(",")[0].strip()
+        or "Actor"
+    )
+    studio = str(rec.get("Studio", "") or "").strip() or "Studio"
+    if studio in ("N/A",):
+        studio = "Studio"
+
+    _named_labels = {
+        "director_film_count": f"Director:{director1}: {{val:.0f}} Films Seen",
+        "director_avg_rating": f"Director:{director1}: Avg Rating {{val:.1f}}",
+        "actor1_film_count":   f"Actor:{actor1}: {{val:.0f}} Films Seen",
+        "actor1_avg_rating":   f"Actor:{actor1}: Avg Rating {{val:.1f}}",
+        "studio_film_count":   f"Studio:{studio}: {{val:.0f}} Films Seen",
+        "studio_avg_rating":   f"Studio:{studio}: Avg Rating {{val:.1f}}",
+    }
 
     contributions = []
     for feat, sv, fv in zip(feature_names, shap_vals, row.values[0]):
@@ -532,6 +652,8 @@ def get_shap_contributions(row: pd.DataFrame, artifacts: dict) -> list[dict]:
             label = f"Genre: {feat.replace('genre_', '')}"
         elif feat.startswith("tag_"):
             label = tag_display_label(feat) or feat
+        elif feat in _named_labels:
+            label = _named_labels[feat].format(val=fv)
         else:
             label = FEATURE_LABELS.get(feat, feat)
 
@@ -551,6 +673,10 @@ def format_feature_tags(contributions: list[dict], rec: dict) -> list[dict]:
     """Build human-readable feature impact tags for the UI badges."""
     tags = []
     seen_labels = set()
+
+    # Pre-build count lookup to suppress avg_rating when count == 0
+    _counts = {c["feature"]: c["value"] for c in contributions
+               if c["feature"] in ("director_film_count", "actor1_film_count", "studio_film_count")}
 
     for c in contributions:
         label = c["label"]
@@ -607,30 +733,41 @@ def format_feature_tags(contributions: list[dict], rec: dict) -> list[dict]:
         elif c["feature"] == "oscar_nom":
             display = "Oscar Nominated" if rec.get("oscar_nom", 0) else "No Oscar Nom"
         elif c["feature"] == "director_avg_rating":
+            if _counts.get("director_film_count", 0) == 0:
+                continue
             d1 = str(rec.get("Director", "") or "").split(",")[0].strip()
-            cnt = int(c["value"] if c["value"] >= 1 else 0)
-            display = f"{d1}: {c['value']:.1f} avg" if d1 and d1 not in ("N/A", "Unknown") else "Director: Avg Rating"
+            display = f"{d1}: Avg Rating {c['value']:.1f}" if d1 and d1 not in ("N/A", "Unknown") else "Director: Avg Rating"
         elif c["feature"] == "director_film_count":
+            if c["value"] == 0:
+                continue
             d1 = str(rec.get("Director", "") or "").split(",")[0].strip()
-            display = f"{d1}: {int(c['value'])} films seen" if d1 and d1 not in ("N/A", "Unknown") else "Director: Films Seen"
+            display = f"{d1}: {int(c['value'])} Films Seen" if d1 and d1 not in ("N/A", "Unknown") else "Director: Films Seen"
         elif c["feature"] == "actor1_avg_rating":
+            if _counts.get("actor1_film_count", 0) == 0:
+                continue
             a1 = (
                 str(rec.get("Actors_RT", "") or "").split(",")[0].strip()
                 or str(rec.get("Actors", "") or "").split(",")[0].strip()
             )
-            display = f"{a1}: {c['value']:.1f} avg" if a1 and a1 not in ("N/A", "Unknown") else "Actor: Avg Rating"
+            display = f"{a1}: Avg Rating {c['value']:.1f}" if a1 and a1 not in ("N/A", "Unknown") else "Actor: Avg Rating"
         elif c["feature"] == "actor1_film_count":
+            if c["value"] == 0:
+                continue
             a1 = (
                 str(rec.get("Actors_RT", "") or "").split(",")[0].strip()
                 or str(rec.get("Actors", "") or "").split(",")[0].strip()
             )
-            display = f"{a1}: {int(c['value'])} films seen" if a1 and a1 not in ("N/A", "Unknown") else "Actor: Films Seen"
+            display = f"{a1}: {int(c['value'])} Films Seen" if a1 and a1 not in ("N/A", "Unknown") else "Actor: Films Seen"
         elif c["feature"] == "studio_avg_rating":
             s = str(rec.get("Studio", "") or "").strip()
-            display = f"{s}: {c['value']:.1f} avg" if s and s not in ("N/A", "Unknown", "") else "Studio: Avg Rating"
+            if not s or s in ("N/A", "Unknown") or _counts.get("studio_film_count", 0) == 0:
+                continue
+            display = f"Studio: {s}: Avg Rating {c['value']:.1f}"
         elif c["feature"] == "studio_film_count":
             s = str(rec.get("Studio", "") or "").strip()
-            display = f"{s}: {int(c['value'])} films seen" if s and s not in ("N/A", "Unknown", "") else "Studio: Films Seen"
+            if not s or s in ("N/A", "Unknown") or c["value"] == 0:
+                continue
+            display = f"Studio: {s}: {int(c['value'])} Films Seen"
         else:
             display = label
 
@@ -644,13 +781,13 @@ def format_feature_tags(contributions: list[dict], rec: dict) -> list[dict]:
 
 # ─── Main prediction entry point ─────────────────────────────────────────────
 
-def predict_movie(title: str) -> dict | None:
+def predict_movie(title: str, imdb_id: str | None = None) -> dict | None:
     """
     Full pipeline for a single movie title.
     Returns a rich dict with all UI data, or None if not found.
     """
     # 1. Fetch from OMDb
-    raw = fetch_by_title(title)
+    raw = fetch_by_imdb_id(imdb_id) if imdb_id else fetch_by_title(title)
     if raw is None:
         return None
 
@@ -677,10 +814,10 @@ def predict_movie(title: str) -> dict | None:
         rt_data = None
     if rt_data:
         rec["Actors_RT"] = ", ".join(rt_data["cast_top5"])
-        rec["Studio"]    = rt_data["studio"] or ""
+        rec["Studio"]    = rt_data["studio"] or rec.get("Production", "") or ""
     else:
         rec["Actors_RT"] = ""
-        rec["Studio"]    = ""
+        rec["Studio"]    = rec.get("Production", "") or ""
 
     # 2. LLM tag inference
     tags_dict    = call_groq_tagger(rec)
@@ -703,7 +840,7 @@ def predict_movie(title: str) -> dict | None:
     match_pct  = round(pred_score / 10 * 100, 1)
 
     # 6. SHAP
-    contributions = get_shap_contributions(row, artifacts)
+    contributions = get_shap_contributions(row, artifacts, rec=rec)
     feature_tags = format_feature_tags(contributions, rec)
 
     # 7. Similarity (used for Why prompt — unconstrained best match)

@@ -15,9 +15,11 @@ from io import BytesIO
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
-from predict import predict_movie, _load_all, find_similar_movie_combined
+import streamlit.components.v1 as _components
+from predict import predict_movie, _load_all, find_similar_movie_combined, search_omdb
+from streamlit_searchbox import st_searchbox
 from predict_noel import predict_movie_noel, _load_all as _load_all_noel
-from config import GROQ_API_KEY, TAG_TAXONOMY, PARENTS_GUIDE_CSV
+from config import TAG_TAXONOMY, PARENTS_GUIDE_CSV
 from tag_features import tag_col_name
 
 # ─── Page config ──────────────────────────────────────────────────────────────
@@ -155,6 +157,31 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) 
   padding: 0.2rem 0.55rem; font-size: 0.78rem; color: #9ca3af;
   margin: 0.2rem 0.15rem; border: 1px solid #2d3748;
 }
+
+@media (max-width: 768px) {
+  .block-container {
+    padding-top: 0.5rem !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+  div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2),
+  div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(3) {
+    padding: 0.7rem !important;
+  }
+}
+
+/* Rounded corners on the searchbox iframe itself */
+iframe[title="streamlit_searchbox.searchbox"] {
+  border-radius: 10px !important;
+  overflow: hidden !important;
+}
+
+/* Tighten vertical spacing around the search bar */
+.stElementContainer:has(iframe[title="streamlit_searchbox.searchbox"]) {
+  margin-top: -16px !important;
+  margin-bottom: 0 !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -391,14 +418,15 @@ def stream_why_narrative(rec: dict, pred_score: float, match_pct: float,
                          top_pos: list, top_neg: list, similar: dict,
                          vibe: float, person: str, train_meta=None):
     """Stream a Groq-generated 'Why' narrative."""
-    if not GROQ_API_KEY:
+    groq_key = st.secrets.get("GROQ_API_KEY", "") or os.environ.get("GROQ_API_KEY", "")
+    if not groq_key:
         yield "*(Set GROQ_API_KEY in config.py to enable AI explanations.)*"
         return
 
     prompt = build_why_prompt(rec, pred_score, match_pct, top_pos, top_neg,
                                similar, vibe, person, train_meta)
     try:
-        client = Groq(api_key=GROQ_API_KEY)
+        client = Groq(api_key=groq_key)
         stream = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
@@ -637,35 +665,89 @@ def main():
     <div style='font-size:1.89rem; font-weight:900; letter-spacing:0.30em;
                 text-transform:uppercase; color:#ffffff; line-height:1;'>ENZYME</div>
     <div style='font-size:0.88rem; color:#6b7280; letter-spacing:0.10em;
-                font-weight:400; margin-top:2px;'>Movies, broken down for you.</div>
+                font-weight:400; margin-top:2px;'>Movies and Shows, broken down for you.</div>
   </div>
 </div>""",
         unsafe_allow_html=True,
     )
 
-    query = st.text_input(
-        label="search",
-        label_visibility="collapsed",
+    # Inject "Source Sans Pro" font into the searchbox iframe so it matches the main page.
+    # style_overrides only reaches the raw <input>; emotion-CSS divs need a direct <style> injection.
+    _components.html("""
+<script>
+(function() {
+  function injectFont(iframe) {
+    try {
+      var doc = iframe.contentDocument || iframe.contentWindow.document;
+      if (!doc || !doc.head || doc._fontInjected) return;
+      doc._fontInjected = true;
+      var link = doc.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600&display=swap';
+      doc.head.appendChild(link);
+      var s = doc.createElement('style');
+      s.textContent = '*, input, div, span { font-family: \\'Source Sans Pro\\', sans-serif !important; } [class*="-control"] { border-radius: 10px !important; }';
+      doc.head.appendChild(s);
+    } catch(e) {}
+  }
+  function scan() {
+    var iframe = parent.document.querySelector('iframe[title="streamlit_searchbox.searchbox"]');
+    if (!iframe) return;
+    if (iframe.contentDocument && iframe.contentDocument.head) {
+      injectFont(iframe);
+    } else {
+      iframe.addEventListener('load', function() { injectFont(iframe); });
+    }
+  }
+  new MutationObserver(scan).observe(parent.document.body, { childList: true, subtree: true });
+  scan();
+})();
+</script>
+""", height=0)
+
+    def _movie_search(q: str):
+        if not q or len(q) < 2:
+            return []
+        matches = search_omdb(q)
+        return [(f"{m['title']} ({m['year']})", m["imdbID"]) for m in matches]
+
+    _FONT = "'Source Sans Pro', sans-serif"
+    selected = st_searchbox(
+        _movie_search,
         placeholder="🔍  Search a movie title…",
-        key="movie_search",
+        key="movie_searchbox",
+        clear_on_submit=False,
+        style_absolute=True,
+        style_overrides={
+            "searchbox": {
+                "optionEmpty": "hidden",
+                "input":       {"fontFamily": _FONT, "fontSize": "1rem"},
+                "placeholder": {"fontFamily": _FONT, "fontSize": "1rem"},
+                "singleValue": {"fontFamily": _FONT, "fontSize": "1rem"},
+                "control":     {"fontFamily": _FONT, "borderRadius": "10px"},
+                "menuList":    {"fontFamily": _FONT, "fontSize": "1rem"},
+                "option":      {"fontFamily": _FONT, "fontSize": "1rem"},
+            }
+        },
     )
 
     st.markdown(
-        "<div style='border-bottom:1px solid #1f2937; margin:0.4rem 0 1.4rem 0;'></div>",
+        "<div style='border-bottom:1px solid #1f2937; margin:-1rem 0 1.4rem 0;'></div>",
         unsafe_allow_html=True,
     )
 
-    if not query:
+    if not selected:
         return
 
-    with st.spinner(f'Analyzing "{query}"…'):
-        result = predict_movie(query)
+    # selected is the imdbID of the chosen movie
+    selected_imdb_id = selected
+    query = selected_imdb_id  # used only for spinner label below
+
+    with st.spinner("Analyzing…"):
+        result = predict_movie("", imdb_id=selected_imdb_id)
 
     if result is None:
-        st.error(
-            f'Could not find "{query}" on OMDb. '
-            "Check the spelling or the daily limit may have been reached."
-        )
+        st.error("Could not load this title. The daily API limit may have been reached.")
         return
 
     rec = result["rec"]
@@ -734,14 +816,21 @@ def main():
 
         # Award badges
         award_parts = []
-        oscar_wins = rec.get("oscar_wins", 0) or 0
-        oscar_noms = rec.get("oscar_noms", 0) or 0
-        gg_wins    = rec.get("gg_wins", 0) or 0
-        gg_noms    = rec.get("gg_noms", 0) or 0
+        def _safe_int(v):
+            try:
+                import math
+                f = float(v)
+                return 0 if math.isnan(f) else int(f)
+            except (TypeError, ValueError):
+                return 0
+        oscar_wins = _safe_int(rec.get("oscar_wins", 0))
+        oscar_noms = _safe_int(rec.get("oscar_noms", 0))
+        gg_wins    = _safe_int(rec.get("gg_wins", 0))
+        gg_noms    = _safe_int(rec.get("gg_noms", 0))
         if oscar_wins > 0:
             label = f"{'🏆' * min(int(oscar_wins), 3)} {int(oscar_wins)} Oscar{'s' if oscar_wins != 1 else ''}"
             if oscar_noms > oscar_wins:
-                label += f" / {int(oscar_noms)} nom{'s' if oscar_noms != 1 else ''}"
+                label += f" / {int(oscar_noms)} Nomination{'s' if oscar_noms != 1 else ''}"
             award_parts.append(
                 f"<span style='display:inline-block; background:rgba(255,215,0,0.12); "
                 f"border:1px solid rgba(255,215,0,0.35); border-radius:6px; "
@@ -754,12 +843,19 @@ def main():
                 f"border:1px solid rgba(255,215,0,0.2); border-radius:6px; "
                 f"padding:0.22rem 0.6rem; font-size:0.78rem; color:#b8a000; "
                 f"margin:0.25rem 0.2rem 0 0;'>"
-                f"🎬 {int(oscar_noms)} Oscar nom{'s' if oscar_noms != 1 else ''}</span>"
+                f"🎬 {int(oscar_noms)} Oscar Nomination{'s' if oscar_noms != 1 else ''}</span>"
+            )
+        else:
+            award_parts.append(
+                f"<span style='display:inline-block; background:rgba(255,215,0,0.04); "
+                f"border:1px solid rgba(255,215,0,0.12); border-radius:6px; "
+                f"padding:0.22rem 0.6rem; font-size:0.78rem; color:#6b5e00; "
+                f"margin:0.25rem 0.2rem 0 0;'>No Oscar Nominations</span>"
             )
         if gg_wins > 0:
             label = f"✨ {int(gg_wins)} Golden Globe{'s' if gg_wins != 1 else ''}"
             if gg_noms > gg_wins:
-                label += f" / {int(gg_noms)} nom{'s' if gg_noms != 1 else ''}"
+                label += f" / {int(gg_noms)} Nomination{'s' if gg_noms != 1 else ''}"
             award_parts.append(
                 f"<span style='display:inline-block; background:rgba(192,192,255,0.1); "
                 f"border:1px solid rgba(192,192,255,0.25); border-radius:6px; "
@@ -772,9 +868,20 @@ def main():
                 f"border:1px solid rgba(192,192,255,0.15); border-radius:6px; "
                 f"padding:0.22rem 0.6rem; font-size:0.78rem; color:#7077c0; "
                 f"margin:0.25rem 0.2rem 0 0;'>"
-                f"🌐 {int(gg_noms)} Golden Globe nom{'s' if gg_noms != 1 else ''}</span>"
+                f"🌐 {int(gg_noms)} Golden Globe Nomination{'s' if gg_noms != 1 else ''}</span>"
             )
-        award_html = "".join(award_parts)
+        else:
+            award_parts.append(
+                f"<span style='display:inline-block; background:rgba(192,192,255,0.04); "
+                f"border:1px solid rgba(192,192,255,0.12); border-radius:6px; "
+                f"padding:0.22rem 0.6rem; font-size:0.78rem; color:#3d3f70; "
+                f"margin:0.25rem 0.2rem 0 0;'>No Golden Globe Nominations</span>"
+            )
+        award_html = (
+            f"<div style='font-size:0.86rem; font-weight:600; color:#e2e8f0; "
+            f"margin:1rem 0 0.4rem 0;'>Awards</div>"
+            f"{''.join(award_parts)}"
+        )
 
         # Director / Cast
         dir_html = ""
@@ -793,16 +900,24 @@ def main():
                 f"{actors}</p>"
             )
 
-        # Critics
+        # Scores
+        def _safe_num(v):
+            try:
+                f = float(v)
+                import math
+                return None if math.isnan(f) else f
+            except (TypeError, ValueError):
+                return None
+
         crit_items = []
-        if rec.get("imdbRating"):
+        if _safe_num(rec.get("imdbRating")) is not None:
             crit_items.append(("IMDb", f"{rec['imdbRating']}/10"))
-        if rec.get("RT_score"):
-            crit_items.append(("Rotten Tomatoes", f"{int(rec['RT_score'])}%"))
-        if rec.get("rt_audience") is not None:
-            crit_items.append(("RT Audience", f"{int(rec['rt_audience'])}%"))
-        if rec.get("Metascore") and str(rec["Metascore"]) != "nan":
-            crit_items.append(("Metacritic", f"{int(rec['Metascore'])}/100"))
+        if _safe_num(rec.get("RT_score")) is not None:
+            crit_items.append(("RT Critic", f"{int(float(rec['RT_score']))}%"))
+        if _safe_num(rec.get("rt_audience")) is not None:
+            crit_items.append(("RT Audience", f"{int(float(rec['rt_audience']))}%"))
+        if _safe_num(rec.get("Metascore")) is not None:
+            crit_items.append(("Metacritic", f"{int(float(rec['Metascore']))}/100"))
         critics_html = ""
         if crit_items:
             crit_cols = "".join(
@@ -815,7 +930,7 @@ def main():
             )
             critics_html = (
                 f"<div style='font-size:0.86rem; font-weight:600; color:#e2e8f0; "
-                f"margin:1rem 0 0.4rem 0;'>Critics &amp; Audience</div>"
+                f"margin:1rem 0 0.4rem 0;'>Scores</div>"
                 f"<div style='display:flex; gap:0.5rem; flex-wrap:wrap;'>{crit_cols}</div>"
             )
 
@@ -902,10 +1017,11 @@ def main():
   <div style='padding:1rem 1.2rem 1.4rem 1.2rem;'>
     <h2 style='font-size:1.5rem; font-weight:800; color:#ffffff; 
                margin:0 0 0.5rem 0; line-height:1.2;'>{rec['Title']}</h2>
-    <div style='margin-bottom:0.25rem;'>{chips_html}</div>{award_html}
+    <div style='margin-bottom:0.25rem;'>{chips_html}</div>
     {dir_html}
     {cast_html}
     {critics_html}
+    {award_html}
     {pg_html}
     {profile_html}
   </div>

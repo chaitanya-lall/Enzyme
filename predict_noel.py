@@ -206,9 +206,30 @@ def compute_vibe_match(embedding: np.ndarray, artifacts: dict) -> float:
     return round(float(np.clip((sim + 1) / 2 * 100, 0, 100)), 1)
 
 
-def get_shap_contributions(row: pd.DataFrame, artifacts: dict) -> list[dict]:
+def get_shap_contributions(row: pd.DataFrame, artifacts: dict, rec: dict = None) -> list[dict]:
     shap_vals = artifacts["explainer"].shap_values(row)[0]
     feature_names = artifacts["feature_names"]
+
+    rec = rec or {}
+    director1 = str(rec.get("Director", "") or "").split(",")[0].strip() or "Director"
+    actor1 = (
+        str(rec.get("Actors_RT", "") or "").split(",")[0].strip()
+        or str(rec.get("Actors", "") or "").split(",")[0].strip()
+        or "Actor"
+    )
+    studio = str(rec.get("Studio", "") or "").strip() or "Studio"
+    if studio in ("N/A",):
+        studio = "Studio"
+
+    _named_labels = {
+        "director_film_count": f"Director:{director1}: {{val:.0f}} Films Seen",
+        "director_avg_rating": f"Director:{director1}: Avg Rating {{val:.1f}}",
+        "actor1_film_count":   f"Actor:{actor1}: {{val:.0f}} Films Seen",
+        "actor1_avg_rating":   f"Actor:{actor1}: Avg Rating {{val:.1f}}",
+        "studio_film_count":   f"Studio:{studio}: {{val:.0f}} Films Seen",
+        "studio_avg_rating":   f"Studio:{studio}: Avg Rating {{val:.1f}}",
+    }
+
     contributions = []
     for feat, sv, fv in zip(feature_names, shap_vals, row.values[0]):
         if feat.startswith("plot_"):
@@ -217,6 +238,8 @@ def get_shap_contributions(row: pd.DataFrame, artifacts: dict) -> list[dict]:
             label = f"Genre: {feat.replace('genre_', '')}"
         elif feat.startswith("tag_"):
             label = tag_display_label(feat) or feat
+        elif feat in _named_labels:
+            label = _named_labels[feat].format(val=fv)
         else:
             label = FEATURE_LABELS.get(feat, feat)
         contributions.append({"feature": feat, "label": label, "value": float(fv), "shap": float(sv)})
@@ -227,6 +250,11 @@ def get_shap_contributions(row: pd.DataFrame, artifacts: dict) -> list[dict]:
 def format_feature_tags(contributions: list[dict], rec: dict) -> list[dict]:
     tags = []
     seen_labels = set()
+
+    # Pre-build count lookup to suppress avg_rating when count == 0
+    _counts = {c["feature"]: c["value"] for c in contributions
+               if c["feature"] in ("director_film_count", "actor1_film_count", "studio_film_count")}
+
     for c in contributions:
         label = c["label"]
         if label == "Plot Themes":
@@ -274,29 +302,41 @@ def format_feature_tags(contributions: list[dict], rec: dict) -> list[dict]:
         elif c["feature"] == "oscar_nom":
             display = "Oscar Nominated" if rec.get("oscar_nom", 0) else "No Oscar Nom"
         elif c["feature"] == "director_avg_rating":
+            if _counts.get("director_film_count", 0) == 0:
+                continue
             d1 = str(rec.get("Director", "") or "").split(",")[0].strip()
-            display = f"{d1}: {c['value']:.1f} avg" if d1 and d1 not in ("N/A", "Unknown") else "Director avg rating"
+            display = f"{d1}: Avg Rating {c['value']:.1f}" if d1 and d1 not in ("N/A", "Unknown") else "Director: Avg Rating"
         elif c["feature"] == "director_film_count":
+            if c["value"] == 0:
+                continue
             d1 = str(rec.get("Director", "") or "").split(",")[0].strip()
-            display = f"{d1}: {int(c['value'])} films seen" if d1 and d1 not in ("N/A", "Unknown") else "Director films seen"
+            display = f"{d1}: {int(c['value'])} Films Seen" if d1 and d1 not in ("N/A", "Unknown") else "Director: Films Seen"
         elif c["feature"] == "actor1_avg_rating":
+            if _counts.get("actor1_film_count", 0) == 0:
+                continue
             a1 = (
                 str(rec.get("Actors_RT", "") or "").split(",")[0].strip()
                 or str(rec.get("Actors", "") or "").split(",")[0].strip()
             )
-            display = f"{a1}: {c['value']:.1f} avg" if a1 and a1 not in ("N/A", "Unknown") else "Actor avg rating"
+            display = f"{a1}: Avg Rating {c['value']:.1f}" if a1 and a1 not in ("N/A", "Unknown") else "Actor: Avg Rating"
         elif c["feature"] == "actor1_film_count":
+            if c["value"] == 0:
+                continue
             a1 = (
                 str(rec.get("Actors_RT", "") or "").split(",")[0].strip()
                 or str(rec.get("Actors", "") or "").split(",")[0].strip()
             )
-            display = f"{a1}: {int(c['value'])} films seen" if a1 and a1 not in ("N/A", "Unknown") else "Actor films seen"
+            display = f"{a1}: {int(c['value'])} Films Seen" if a1 and a1 not in ("N/A", "Unknown") else "Actor: Films Seen"
         elif c["feature"] == "studio_avg_rating":
             s = str(rec.get("Studio", "") or "").strip()
-            display = f"{s}: {c['value']:.1f} avg" if s and s not in ("N/A", "Unknown", "") else "Studio avg rating"
+            if not s or s in ("N/A", "Unknown") or _counts.get("studio_film_count", 0) == 0:
+                continue
+            display = f"Studio: {s}: Avg Rating {c['value']:.1f}"
         elif c["feature"] == "studio_film_count":
             s = str(rec.get("Studio", "") or "").strip()
-            display = f"{s}: {int(c['value'])} films seen" if s and s not in ("N/A", "Unknown", "") else "Studio films seen"
+            if not s or s in ("N/A", "Unknown") or c["value"] == 0:
+                continue
+            display = f"Studio: {s}: {int(c['value'])} Films Seen"
         else:
             display = label
 
@@ -326,7 +366,7 @@ def predict_movie_noel(rec: dict, tags_dict: dict | None = None,
     pred_score = float(np.clip(pred_raw, 1, 10))
     match_pct  = round(pred_score / 10 * 100, 1)
 
-    contributions = get_shap_contributions(row, artifacts)
+    contributions = get_shap_contributions(row, artifacts, rec=rec)
     feature_tags  = format_feature_tags(contributions, rec)
     similar       = find_similar_movie(embedding, artifacts)
     vibe          = compute_vibe_match(embedding, artifacts)

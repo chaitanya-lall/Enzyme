@@ -1,14 +1,24 @@
 import os
 
+def _secret(key, default=""):
+    val = os.environ.get(key, "")
+    if val:
+        return val
+    try:
+        import streamlit as st
+        return st.secrets.get(key, default)
+    except Exception:
+        return default
+
 # OMDb API — reads from environment (Streamlit Cloud secrets) with local fallback
-OMDB_API_KEY      = os.environ.get("OMDB_API_KEY",   "")
-OMDB_API_KEY_2    = os.environ.get("OMDB_API_KEY_2", "")
-OMDB_NOEL_KEY     = os.environ.get("OMDB_NOEL_KEY",  "")
-OMDB_APP_KEY      = os.environ.get("OMDB_APP_KEY",   "")
+OMDB_API_KEY      = _secret("OMDB_API_KEY")
+OMDB_API_KEY_2    = _secret("OMDB_API_KEY_2")
+OMDB_NOEL_KEY     = _secret("OMDB_NOEL_KEY")
+OMDB_APP_KEY      = _secret("OMDB_APP_KEY")
 
 # AI narrative keys
-GEMINI_API_KEY    = os.environ.get("GEMINI_API_KEY", "")
-GROQ_API_KEY      = os.environ.get("GROQ_API_KEY",   "")
+GEMINI_API_KEY    = _secret("GEMINI_API_KEY")
+GROQ_API_KEY      = _secret("GROQ_API_KEY")
 OMDB_BASE_URL = "https://www.omdbapi.com/"
 OMDB_RATE_LIMIT_SLEEP = 0.25  # seconds between requests (free tier safe)
 OMDB_DAILY_LIMIT = 1000        # free tier cap
