@@ -13,4 +13,5 @@ beautifulsoup4
 Pillow
 google-generativeai
 streamlit>=1.30.0
+protobuf>=4.0.0
 streamlit-searchbox==0.1.23

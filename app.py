@@ -1,5 +1,5 @@
 """
-The Personalized Critic — Streamlit UI
+Enzyme — Streamlit UI
 Run with:  streamlit run app.py
 """
 from __future__ import annotations
@@ -1010,20 +1010,25 @@ def main():
                 )
 
         # Assemble full card
+        # NOTE: optional sections are pre-concatenated so empty strings never
+        # produce a whitespace-only line inside the f-string, which would be
+        # treated as a blank line by CommonMark and terminate the HTML block early,
+        # causing subsequent sections to render as indented code blocks (raw text).
+        _body = "".join([
+            f"<div style='margin-bottom:0.25rem;'>{chips_html}</div>",
+            dir_html,
+            cast_html,
+            critics_html,
+            award_html,
+            pg_html,
+            profile_html,
+        ])
         movie_card = f"""
-<div style='background:#13161f; border-radius:13px; overflow:visible;
-            margin-bottom:0;'>
+<div style='background:#13161f; border-radius:13px; overflow:visible; margin-bottom:0;'>
   {poster_html}
   <div style='padding:1rem 1.2rem 1.4rem 1.2rem;'>
-    <h2 style='font-size:1.5rem; font-weight:800; color:#ffffff; 
-               margin:0 0 0.5rem 0; line-height:1.2;'>{rec['Title']}</h2>
-    <div style='margin-bottom:0.25rem;'>{chips_html}</div>
-    {dir_html}
-    {cast_html}
-    {critics_html}
-    {award_html}
-    {pg_html}
-    {profile_html}
+    <h2 style='font-size:1.5rem; font-weight:800; color:#ffffff; margin:0 0 0.5rem 0; line-height:1.2;'>{rec['Title']}</h2>
+{_body}
   </div>
 </div>
 """
