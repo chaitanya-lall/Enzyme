@@ -12,4 +12,5 @@ groq
 beautifulsoup4
 Pillow
 google-generativeai
-streamlit-searchbox
+streamlit>=1.30.0
+streamlit-searchbox==0.1.23
