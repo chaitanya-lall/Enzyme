@@ -12,3 +12,4 @@ groq
 beautifulsoup4
 Pillow
 google-generativeai
+streamlit-searchbox
