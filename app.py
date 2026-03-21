@@ -163,10 +163,22 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) 
     padding-top: 0.5rem !important;
     padding-left: 1rem !important;
     padding-right: 1rem !important;
+    padding-bottom: 0 !important;
+  }
+  /* Remove bottom white bar */
+  .stApp, [data-testid="stAppViewBlockContainer"] {
+    padding-bottom: 0 !important;
+    margin-bottom: 0 !important;
   }
   div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2),
   div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(3) {
     padding: 0.7rem !important;
+  }
+  /* Equal padding around poster — strip default margins from the markdown container */
+  div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) [data-testid="stMarkdownContainer"],
+  div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) .stMarkdownContainer {
+    margin: 0 !important;
+    padding: 0 !important;
   }
 }
 
@@ -566,8 +578,9 @@ def load_parents_guide() -> dict[str, dict[str, str]]:
 
 def render_meter_column(rec: dict, meter_result: dict, person: str,
                         anchor: dict | None = None,
-                        train_meta=None):
-    """Render a Match column (Figma card style)."""
+                        train_meta=None,
+                        cached_narrative: str | None = None):
+    """Render a Match column (Figma card style). Returns the narrative text."""
     pct        = meter_result["match_pct"]
     tags       = meter_result["tags"]
     similar    = meter_result["similar"]
@@ -603,15 +616,21 @@ def render_meter_column(rec: dict, meter_result: dict, person: str,
     # ── Why This Score
     st.markdown("<div class='section-head'>Why This Score?</div>", unsafe_allow_html=True)
     narrative_container = st.empty()
-    full_text = ""
-    for chunk in stream_why_narrative(rec, pred_score, pct, top_pos, top_neg,
-                                       similar, vibe, person, train_meta):
-        full_text += chunk
+    if cached_narrative:
+        full_text = cached_narrative
         narrative_container.markdown(
             f"<div class='narrative-box'>{full_text}</div>",
             unsafe_allow_html=True,
         )
-
+    else:
+        full_text = ""
+        for chunk in stream_why_narrative(rec, pred_score, pct, top_pos, top_neg,
+                                           similar, vibe, person, train_meta):
+            full_text += chunk
+            narrative_container.markdown(
+                f"<div class='narrative-box'>{full_text}</div>",
+                unsafe_allow_html=True,
+            )
     # ── Key Drivers
     with st.expander("Key Drivers", expanded=False):
         tags_html = "".join(
@@ -644,6 +663,7 @@ def render_meter_column(rec: dict, meter_result: dict, person: str,
             f"</div>",
             unsafe_allow_html=True,
         )
+    return full_text
 
 
 # ─── Main app ─────────────────────────────────────────────────────────────────
@@ -736,51 +756,74 @@ def main():
         unsafe_allow_html=True,
     )
 
-    if not selected:
+    # Persist the last selection so clearing the search bar (X button or
+    # backspace) does not wipe the displayed movie — the view only updates
+    # when a new movie is explicitly selected from the results.
+    if selected:
+        st.session_state["last_selected_imdb"] = selected
+    selected_imdb_id = st.session_state.get("last_selected_imdb")
+
+    if not selected_imdb_id:
         return
 
-    # selected is the imdbID of the chosen movie
-    selected_imdb_id = selected
-    query = selected_imdb_id  # used only for spinner label below
+    # Only recompute when the selected movie actually changes.
+    # Re-runs triggered by clearing the search bar (X / backspace) reuse the
+    # cached payload so there is no spinner or visual reload.
+    _cache_hit = st.session_state.get("_cached_imdb") == selected_imdb_id
+    if not _cache_hit:
+        with st.spinner("Analyzing…"):
+            result = predict_movie("", imdb_id=selected_imdb_id)
 
-    with st.spinner("Analyzing…"):
-        result = predict_movie("", imdb_id=selected_imdb_id)
+        if result is None:
+            st.error("Could not load this title. The daily API limit may have been reached.")
+            return
 
-    if result is None:
-        st.error("Could not load this title. The daily API limit may have been reached.")
-        return
+        rec = result["rec"]
+        tags_dict = result.get("tags_dict", {})
+        rec["tags_dict"] = tags_dict
 
-    rec = result["rec"]
-    tags_dict = result.get("tags_dict", {})
+        noel_result = predict_movie_noel(rec, tags_dict=tags_dict,
+                                         pg_ratings=result.get("pg_ratings"))
+        chai_result = {
+            "pred_score": result["pred_score"],
+            "match_pct":  result["match_pct"],
+            "tags":       result["tags"],
+            "similar":    result["similar"],
+            "vibe":       result["vibe"],
+            "top_pos":    result["top_pos"],
+            "top_neg":    result["top_neg"],
+        }
 
-    # Attach tags_dict to rec so _preference_stats() can access them
-    rec["tags_dict"] = tags_dict
+        chai_artifacts = preload_artifacts()
+        noel_artifacts = preload_artifacts_noel()
+        chai_anchor, noel_anchor = get_closest_matches(
+            embedding      = result["embedding"],
+            tags_dict      = tags_dict,
+            imdb_rating    = float(rec.get("imdbRating") or 5.0),
+            movie_const    = None,
+            chai_artifacts = chai_artifacts,
+            noel_artifacts = noel_artifacts,
+        )
 
-    # Noel's prediction reuses same OMDb record, tags, and PG ratings — no extra API calls
-    noel_result = predict_movie_noel(rec, tags_dict=tags_dict,
-                                     pg_ratings=result.get("pg_ratings"))
-
-    chai_result = {
-        "pred_score": result["pred_score"],
-        "match_pct":  result["match_pct"],
-        "tags":       result["tags"],
-        "similar":    result["similar"],
-        "vibe":       result["vibe"],
-        "top_pos":    result["top_pos"],
-        "top_neg":    result["top_neg"],
-    }
-
-    # Find each person's closest match (>=80% combined similarity)
-    chai_artifacts = preload_artifacts()
-    noel_artifacts = preload_artifacts_noel()
-    chai_anchor, noel_anchor = get_closest_matches(
-        embedding    = result["embedding"],
-        tags_dict    = tags_dict,
-        imdb_rating  = float(rec.get("imdbRating") or 5.0),
-        movie_const  = None,
-        chai_artifacts = chai_artifacts,
-        noel_artifacts = noel_artifacts,
-    )
+        st.session_state["_cached_imdb"]          = selected_imdb_id
+        st.session_state["_cached_rec"]           = rec
+        st.session_state["_cached_tags_dict"]     = tags_dict
+        st.session_state["_cached_pg_ratings"]    = result.get("pg_ratings")
+        st.session_state["_cached_chai_result"]   = chai_result
+        st.session_state["_cached_noel_result"]   = noel_result
+        st.session_state["_cached_chai_anchor"]   = chai_anchor
+        st.session_state["_cached_noel_anchor"]   = noel_anchor
+        st.session_state["_cached_chai_artifacts"] = chai_artifacts
+        st.session_state["_cached_noel_artifacts"] = noel_artifacts
+    else:
+        rec            = st.session_state["_cached_rec"]
+        tags_dict      = st.session_state["_cached_tags_dict"]
+        chai_result    = st.session_state["_cached_chai_result"]
+        noel_result    = st.session_state["_cached_noel_result"]
+        chai_anchor    = st.session_state["_cached_chai_anchor"]
+        noel_anchor    = st.session_state["_cached_noel_anchor"]
+        chai_artifacts = st.session_state["_cached_chai_artifacts"]
+        noel_artifacts = st.session_state["_cached_noel_artifacts"]
 
     # ── Three columns: Movie Details | Chai's Movie-Meter | Noel's Movie-Meter
     col_movie, col_chai, col_noel = st.columns([2.5, 3.75, 3.75], gap="large")
@@ -969,7 +1012,7 @@ def main():
         # Parents Guide badges — prefer live scraped data, fall back to CSV cache
         pg_html = ""
         imdb_id = rec.get("imdbID", "")
-        _live_pg = result.get("pg_ratings") if result else None
+        _live_pg = st.session_state.get("_cached_pg_ratings")
         pg_data = load_parents_guide()
         _csv_pg = pg_data.get(imdb_id) if imdb_id else None
         _pg_rec = _live_pg or _csv_pg
@@ -1035,12 +1078,22 @@ def main():
         st.markdown(movie_card, unsafe_allow_html=True)
 
     with col_chai:
-        render_meter_column(rec, chai_result, "Chai", anchor=chai_anchor,
-                            train_meta=chai_artifacts["train_meta"])
+        chai_narrative = render_meter_column(
+            rec, chai_result, "Chai", anchor=chai_anchor,
+            train_meta=chai_artifacts["train_meta"],
+            cached_narrative=st.session_state.get("_cached_chai_narrative") if _cache_hit else None,
+        )
+        if not _cache_hit:
+            st.session_state["_cached_chai_narrative"] = chai_narrative
 
     with col_noel:
-        render_meter_column(rec, noel_result, "Noel", anchor=noel_anchor,
-                            train_meta=noel_artifacts["train_meta"])
+        noel_narrative = render_meter_column(
+            rec, noel_result, "Noel", anchor=noel_anchor,
+            train_meta=noel_artifacts["train_meta"],
+            cached_narrative=st.session_state.get("_cached_noel_narrative") if _cache_hit else None,
+        )
+        if not _cache_hit:
+            st.session_state["_cached_noel_narrative"] = noel_narrative
 
 
 if __name__ == "__main__":

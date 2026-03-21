@@ -704,30 +704,52 @@ def format_feature_tags(contributions: list[dict], rec: dict) -> list[dict]:
 
         direction = "+" if c["shap"] > 0 else "-"
 
+        def _is_missing(v):
+            """True if v is None, NaN, empty string, or 'N/A'."""
+            if v is None:
+                return True
+            if isinstance(v, float) and pd.isna(v):
+                return True
+            if str(v).strip() in ("", "N/A", "nan", "None"):
+                return True
+            return False
+
         # Add context value for numeric/genre tags
         if c["feature"] == "imdbRating":
             raw_val = rec.get("imdbRating")
-            display = f"IMDb: {raw_val}" if raw_val else "IMDb Rating"
+            if _is_missing(raw_val):
+                continue
+            display = f"IMDb: {raw_val}"
         elif c["feature"] == "Runtime":
             raw_val = rec.get("Runtime")
-            display = f"Runtime: {raw_val}min" if raw_val else "Runtime"
+            if _is_missing(raw_val):
+                continue
+            display = f"Runtime: {raw_val}min"
         elif c["feature"] == "Year":
             raw_val = rec.get("Year")
-            display = f"Year: {int(raw_val)}" if raw_val else "Year"
+            if _is_missing(raw_val):
+                continue
+            display = f"Year: {int(float(raw_val))}"
         elif c["feature"] == "Metascore":
             raw_val = rec.get("Metascore")
-            if raw_val is None or (isinstance(raw_val, float) and pd.isna(raw_val)):
-                continue  # no Metacritic score — skip this driver
-            display = f"Metacritic: {int(raw_val)}"
+            if _is_missing(raw_val):
+                continue
+            display = f"Metacritic: {int(float(raw_val))}"
         elif c["feature"] == "RT_score":
             raw_val = rec.get("RT_score")
-            display = f"RT Critic: {raw_val}%" if raw_val else "RT Critic"
+            if _is_missing(raw_val):
+                continue
+            display = f"RT Critic: {raw_val}%"
         elif c["feature"] == "award_wins":
             raw_val = rec.get("award_wins", 0)
-            display = f"Awards: {int(raw_val)} wins" if raw_val else "Award Wins"
+            if _is_missing(raw_val) or int(float(raw_val)) == 0:
+                continue
+            display = f"Awards: {int(float(raw_val))} wins"
         elif c["feature"] == "award_noms":
             raw_val = rec.get("award_noms", 0)
-            display = f"Nominations: {int(raw_val)}" if raw_val else "Nominations"
+            if _is_missing(raw_val) or int(float(raw_val)) == 0:
+                continue
+            display = f"Nominations: {int(float(raw_val))}"
         elif c["feature"] == "oscar_win":
             display = "Oscar Winner" if rec.get("oscar_win", 0) else "No Oscar Win"
         elif c["feature"] == "oscar_nom":
