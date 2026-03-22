@@ -259,13 +259,26 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) 
 .st-key-mob-filter-bar button div,
 .st-key-mob-filter-bar button span { color: #000000 !important; }
 
-/* Mobile inline filter panel */
-.st-key-mob-filter-panel {
-  background: #13161f;
-  border-radius: 12px;
-  padding: 1rem 1rem 0.5rem 1rem;
-  margin-bottom: 0.8rem;
-  border: 1px solid #2a2f3e;
+/* Mobile inline filter panel — full-screen overlay (dialog-style) on mobile.
+   Rendered inline in the DOM for reliable state management, but CSS positions
+   it as a fixed overlay so it looks and feels like the original @st.dialog. */
+@media (max-width: 768px) {
+  .st-key-mob-filter-panel {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    z-index: 1000 !important;
+    background: #13161f !important;
+    overflow-y: auto !important;
+    padding: 1.5rem 1rem 5rem 1rem !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    border: none !important;
+    /* Darken everything behind it */
+    box-shadow: 0 0 0 200vw rgba(0,0,0,0.75) !important;
+  }
 }
 
 
@@ -1332,7 +1345,20 @@ def _mobile_filters_panel():
         "f_mob_imdb", "f_mob_yr", "f_sort_mob",
     ]
     with st.container(key="mob-filter-panel"):
-        # ── Sort — at the top ────────────────────────────────────────────────
+        # ── Top bar: title + close button ────────────────────────────────────
+        _th, _tc = st.columns([3, 1])
+        with _th:
+            st.markdown(
+                "<h3 style='margin:0.2rem 0 0 0; font-size:1.1rem; font-weight:700;"
+                "color:#e2e8f0;'>Filter and Sort</h3>",
+                unsafe_allow_html=True,
+            )
+        with _tc:
+            if st.button("✕ Close", key="f_mob_close", use_container_width=True):
+                st.session_state["_mob_filters_open"] = False
+                st.rerun()
+        st.divider()
+        # ── Sort ─────────────────────────────────────────────────────────────
         st.markdown("**Sort**")
         st.selectbox(
             "Sort by",
@@ -1369,16 +1395,10 @@ def _mobile_filters_panel():
         st.markdown("**Release Year**")
         st.slider("Year", 1900, 2026, value=(1950, 2026), key="f_mob_yr")
         st.divider()
-        cl, cr = st.columns(2)
-        with cl:
-            if st.button("Clear all", key="f_mob_clear", use_container_width=True):
-                for _k in _mob_keys:
-                    st.session_state.pop(_k, None)
-                st.rerun()
-        with cr:
-            if st.button("Close ▲", key="f_mob_close", type="primary", use_container_width=True):
-                st.session_state["_mob_filters_open"] = False
-                st.rerun()
+        if st.button("Clear all filters", key="f_mob_clear", use_container_width=True):
+            for _k in _mob_keys:
+                st.session_state.pop(_k, None)
+            st.rerun()
 
 
 def _render_catalog_card(item) -> None:
