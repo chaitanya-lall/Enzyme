@@ -1788,22 +1788,23 @@ def render_recommend_tab() -> None:
             unsafe_allow_html=True,
         )
     else:
-        # Inject once: make catalog-card taps fire the hidden Details button on mobile
+        # Inject once: make catalog-card taps fire the hidden Details button on mobile.
+        # Uses event delegation on parent.document so the listener survives Streamlit
+        # reruns (the components iframe may be recreated, but the listener on
+        # parent.document persists). The _enzymeCardTap guard prevents duplicates.
         _components.html("""<script>
 (function() {
   if (parent.window._enzymeCardTap) return;
   parent.window._enzymeCardTap = true;
-  function attach() {
-    parent.document.querySelectorAll('.catalog-card:not([data-tap])').forEach(function(card) {
-      card.setAttribute('data-tap', '1');
-      card.addEventListener('click', function() {
-        var col = card.closest('[data-testid="stColumn"]');
-        if (col) { var btn = col.querySelector('button'); if (btn) btn.click(); }
-      });
-    });
-  }
-  new MutationObserver(attach).observe(parent.document.body, {childList:true, subtree:true});
-  attach();
+  parent.document.addEventListener('click', function(e) {
+    var card = e.target && e.target.closest && e.target.closest('.catalog-card');
+    if (!card) return;
+    var col = card.closest('[data-testid="stColumn"]');
+    if (col) {
+      var btn = col.querySelector('button');
+      if (btn) { e.stopPropagation(); btn.click(); }
+    }
+  }, true);
 })();
 </script>""", height=0)
 
