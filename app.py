@@ -232,6 +232,12 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) 
   /* Hide Details button on mobile — card tap opens the dialog instead */
   div[data-testid="stColumn"]:has(.catalog-card) .stButton { display: none !important; }
   .catalog-card { cursor: pointer; }
+  /* Remove column-level clipping on mobile — .catalog-card handles its own border-radius.
+     The column overflow:hidden was only needed to round the Details button corners (desktop). */
+  div[data-testid="stColumn"]:has(.catalog-card) {
+    overflow: visible !important;
+    border-radius: 0 !important;
+  }
 }
 
 /* ── Mobile filter bar: hidden on desktop ── */
