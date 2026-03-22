@@ -51,7 +51,7 @@ def ids_from_numbers(path):
         return []
 
 out = {"chai_seen": ids_from_numbers(CHAI_SEEN_FILE), "noel_seen": ids_from_numbers(NOEL_SEEN_FILE)}
-with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "seen_ids.json"), "w") as f:
+with open(os.path.join(os.getcwd(), "data", "seen_ids.json"), "w") as f:
     json.dump(out, f)
 print(f"seen_ids.json written: chai={len(out['chai_seen'])}, noel={len(out['noel_seen'])}")
 PYEOF
