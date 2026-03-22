@@ -45,14 +45,14 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
 
-NUMBERS_FILE      = "/Users/chaitanya.lall/Documents/Chai IMDb rankings.numbers"
-CHAI_SEEN_FILE    = "/Users/chaitanya.lall/Documents/Chai Seen.numbers"
+NUMBERS_FILE      = _secret("NUMBERS_FILE")
+CHAI_SEEN_FILE    = _secret("CHAI_SEEN_FILE")
 RAW_CSV = os.path.join(DATA_DIR, "enriched_raw.csv")
 OMDB_CSV = os.path.join(DATA_DIR, "enriched_omdb.csv")
 
 # Noel's paths
-NOEL_NUMBERS_FILE = "/Users/chaitanya.lall/Documents/Noel's Ratings.numbers"
-NOEL_SEEN_FILE    = "/Users/chaitanya.lall/Documents/Noel Seen.numbers"
+NOEL_NUMBERS_FILE = _secret("NOEL_NUMBERS_FILE")
+NOEL_SEEN_FILE    = _secret("NOEL_SEEN_FILE")
 NOEL_DATA_DIR    = os.path.join(BASE_DIR, "data",    "noel")
 NOEL_MODELS_DIR  = os.path.join(BASE_DIR, "models",  "noel")
 NOEL_OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs", "noel")

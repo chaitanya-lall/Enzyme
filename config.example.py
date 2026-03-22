@@ -20,12 +20,15 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
 
-NUMBERS_FILE = "/path/to/your/IMDb ratings.numbers"
+# Local data file paths — set these in .streamlit/secrets.toml (never commit real paths)
+# NUMBERS_FILE = "/absolute/path/to/Chai IMDb rankings.numbers"
+# CHAI_SEEN_FILE = "/absolute/path/to/Chai Seen.numbers"
 RAW_CSV = os.path.join(DATA_DIR, "enriched_raw.csv")
 OMDB_CSV = os.path.join(DATA_DIR, "enriched_omdb.csv")
 
-# Second user's paths (optional)
-NOEL_NUMBERS_FILE = "/path/to/second_user/ratings.numbers"
+# Second user's paths — set in .streamlit/secrets.toml
+# NOEL_NUMBERS_FILE = "/absolute/path/to/Noel's Ratings.numbers"
+# NOEL_SEEN_FILE = "/absolute/path/to/Noel Seen.numbers"
 NOEL_DATA_DIR    = os.path.join(BASE_DIR, "data",    "noel")
 NOEL_MODELS_DIR  = os.path.join(BASE_DIR, "models",  "noel")
 NOEL_OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs", "noel")
