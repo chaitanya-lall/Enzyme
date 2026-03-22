@@ -19,9 +19,13 @@ import streamlit.components.v1 as _components
 from streamlit_searchbox import st_searchbox
 from predict import predict_movie, _load_all, find_similar_movie_combined, search_omdb
 from predict_noel import predict_movie_noel, _load_all as _load_all_noel
-from config import TAG_TAXONOMY, PARENTS_GUIDE_CSV, CATALOG_PATH, CHAI_SEEN_FILE, NOEL_SEEN_FILE
+from config import TAG_TAXONOMY, PARENTS_GUIDE_CSV
 from tag_features import tag_col_name
-from catalog_sync import start_background_sync, get_sync_status, catalog_age_days
+from catalog_sync import start_background_sync, get_sync_status, catalog_age_days, CATALOG_PATH
+
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+CHAI_SEEN_FILE = os.path.join(os.path.expanduser("~"), "Documents", "Chai Seen.numbers")
+NOEL_SEEN_FILE = os.path.join(os.path.expanduser("~"), "Documents", "Noel Seen.numbers")
 
 # ─── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
