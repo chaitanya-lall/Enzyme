@@ -1395,10 +1395,16 @@ def _mobile_filters_panel():
         st.markdown("**Release Year**")
         st.slider("Year", 1900, 2026, value=(1950, 2026), key="f_mob_yr")
         st.divider()
-        if st.button("Clear all filters", key="f_mob_clear", use_container_width=True):
-            for _k in _mob_keys:
-                st.session_state.pop(_k, None)
-            st.rerun()
+        _ba, _bb = st.columns(2)
+        with _ba:
+            if st.button("Clear all", key="f_mob_clear", use_container_width=True):
+                for _k in _mob_keys:
+                    st.session_state.pop(_k, None)
+                st.rerun()
+        with _bb:
+            if st.button("Apply", key="f_mob_apply", type="primary", use_container_width=True):
+                st.session_state["_mob_filters_open"] = False
+                st.rerun()
 
 
 def _render_catalog_card(item) -> None:
