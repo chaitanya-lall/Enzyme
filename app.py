@@ -195,12 +195,23 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) 
     margin: 0 !important;
     padding: 0 !important;
   }
-  /* ── Header compaction: tighten nav element spacing by ~50% ── */
+  /* ── Header compaction (~50% reduction between logo/Recommend/Search) ── */
+  /* Collapse the bottom of the logo area */
+  .nav-btn { padding-bottom: 0 !important; padding-top: 0.15rem !important; }
+  /* Tighten column gap inside nav block */
   div[data-testid="stHorizontalBlock"]:has(.nav-btn) {
-    margin-bottom: -0.4rem !important;
+    gap: 0.25rem !important;
+    margin-bottom: -0.5rem !important;
   }
+  /* Buttons: halve the top-margin that desktop adds */
   div[data-testid="stHorizontalBlock"]:has(.nav-btn) button {
-    margin-top: 0.3rem !important;
+    margin-top: 0.15rem !important;
+    height: 2rem !important;
+  }
+  /* Gap between nav block and what follows (hr / filter bar) */
+  div[data-testid="stHorizontalBlock"]:has(.nav-btn) + div,
+  div[data-testid="stHorizontalBlock"]:has(.nav-btn) + hr {
+    margin-top: -0.25rem !important;
   }
   /* ── Hide desktop filter bar; show mobile bar ── */
   .st-key-filter-bar { display: none !important; }
@@ -224,19 +235,9 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) 
 @media (min-width: 769px) {
   .st-key-mob-filter-bar { display: none !important; }
 }
-/* Mobile filter bar styles */
+/* Mobile filter bar styles — single full-width "Filter and Sort" pill */
 .st-key-mob-filter-bar {
   padding: 0 0 0.8rem 0;
-}
-.st-key-mob-filter-bar div[data-testid="stHorizontalBlock"] {
-  gap: 0.5rem !important;
-  align-items: center !important;
-}
-.st-key-mob-filter-bar [data-testid="stColumn"] {
-  padding: 0 !important;
-}
-.st-key-mob-filter-bar div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) {
-  padding: 0 !important;
 }
 .st-key-mob-filter-bar button {
   border-radius: 20px !important;
@@ -250,16 +251,6 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) 
 .st-key-mob-filter-bar button p,
 .st-key-mob-filter-bar button div,
 .st-key-mob-filter-bar button span { color: #000000 !important; }
-.st-key-mob-filter-bar [data-testid="stSelectbox"] > div > div {
-  background: #ffffff !important;
-  border: 1px solid #d1d5db !important;
-  border-radius: 20px !important;
-  font-size: 0.84rem !important;
-  font-weight: 500 !important;
-  min-height: 2.2rem !important;
-  color: #000000 !important;
-  padding: 0 0.5rem 0 0.9rem !important;
-}
 
 
 /* ── Nav bar ─────────────────────────────────────── */
@@ -286,19 +277,49 @@ div[data-testid="stHorizontalBlock"]:has(.nav-btn) button {
 }
 
 /* ── Catalog cards ───────────────────────────────── */
-/* Reset column padding/overflow for columns that contain a catalog card */
+/* Column: flex column so Details button is always anchored to the bottom */
 div[data-testid="stColumn"]:has(.catalog-card) {
   padding: 0 !important;
   overflow: hidden !important;
   border-radius: 13px !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+/* stVerticalBlock inside card column: flex column, zero gap, full height */
+div[data-testid="stColumn"]:has(.catalog-card) > div[data-testid="stVerticalBlockBorderWrapper"],
+div[data-testid="stColumn"]:has(.catalog-card) > div {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+div[data-testid="stColumn"]:has(.catalog-card) [data-testid="stVerticalBlock"] {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+}
+/* Card HTML element stretches to fill space above the button */
+div[data-testid="stColumn"]:has(.catalog-card) [data-testid="stElementContainer"]:has(.catalog-card) {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+div[data-testid="stColumn"]:has(.catalog-card) [data-testid="stElementContainer"]:has(.catalog-card) > div {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 .catalog-card {
   background: #13161f;
   border-radius: 13px;
   overflow: hidden;
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 .catalog-card-body {
   padding: 0.6rem 0.7rem 0.5rem 0.7rem;
+  flex: 1;
 }
 .catalog-card-title {
   font-size: 0.82rem; font-weight: 700; color: #e2e8f0;
@@ -306,8 +327,12 @@ div[data-testid="stColumn"]:has(.catalog-card) {
   margin-bottom: 0.1rem;
 }
 .catalog-card-year { font-size: 0.72rem; color: #6b7280; margin-bottom: 0.3rem; }
-.catalog-card-scores { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.1rem; }
-/* Details button inside a card column */
+.catalog-card-scores { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0; }
+/* Details button inside a card column — flush, no gap */
+div[data-testid="stColumn"]:has(.catalog-card) [data-testid="stElementContainer"]:has(.stButton) {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
 div[data-testid="stColumn"]:has(.catalog-card) .stButton > button {
   width: 100%;
   background: #1a1f2e !important;
@@ -1289,9 +1314,21 @@ def catalog_movie_detail(imdb_id: str) -> None:
     _render_movie_analysis(imdb_id, pfx="_modal")
 
 
-@st.dialog("Filters", width="small")
+@st.dialog("Filter and Sort", width="small")
 def _mobile_filters_dialog():
-    """Mobile-only full-screen filters panel (uses f_mob_* keys to avoid widget ID conflicts)."""
+    """Mobile-only full-screen filter+sort panel (uses f_mob_* keys to avoid ID conflicts)."""
+    # ── Sort — at the top ────────────────────────────────────────────────────
+    st.markdown("**Sort**")
+    st.selectbox(
+        "Sort by",
+        ["Compatibility", "Chai Score", "Noel Score", "IMDb Score", "Newest First"],
+        index=None,
+        placeholder="Compatibility (default)",
+        label_visibility="collapsed",
+        key="f_sort_mob",
+    )
+    st.divider()
+    # ── Filters ──────────────────────────────────────────────────────────────
     st.markdown("**Services**")
     st.checkbox("Netflix",    key="f_mob_svc_netflix")
     st.checkbox("Max",        key="f_mob_svc_max")
@@ -1322,7 +1359,7 @@ def _mobile_filters_dialog():
         "f_mob_svc_hulu", "f_mob_svc_apple", "f_mob_svc_peacock", "f_mob_svc_paramount",
         "f_mob_type_movies", "f_mob_type_tv",
         "f_mob_w_chai_seen", "f_mob_w_chai_not_seen", "f_mob_w_noel_seen", "f_mob_w_noel_not_seen",
-        "f_mob_imdb", "f_mob_yr",
+        "f_mob_imdb", "f_mob_yr", "f_sort_mob",
     ]
     cl, cr = st.columns(2)
     with cl:
@@ -1626,21 +1663,10 @@ def render_recommend_tab() -> None:
         _w_chai_seen, _w_chai_not_seen, _w_noel_seen, _w_noel_not_seen,
         _imdb_val > 0, _yr_val != (1950, 2026),
     ])
-    _mob_filter_lbl = f"Filters ({_mob_active_count}) ▾" if _mob_active_count else "Filters ▾"
+    _mob_filter_lbl = f"Filter and Sort ({_mob_active_count} active) ▾" if _mob_active_count else "Filter and Sort ▾"
     with st.container(key="mob-filter-bar"):
-        mc1, mc2 = st.columns([1, 1])
-        with mc1:
-            if st.button(_mob_filter_lbl, key="f_mob_open", use_container_width=True):
-                _mobile_filters_dialog()
-        with mc2:
-            _mob_sort_val = st.selectbox(
-                "Sort",
-                ["Compatibility", "Chai Score", "Noel Score", "IMDb Score", "Newest First"],
-                index=None,
-                placeholder="Sort: Compatibility",
-                label_visibility="collapsed",
-                key="f_sort_mob",
-            )
+        if st.button(_mob_filter_lbl, key="f_mob_open", use_container_width=True):
+            _mobile_filters_dialog()
     # Prefer mobile sort if user explicitly picked one, otherwise desktop value
     sort_by = st.session_state.get("f_sort_mob") or sort_by
 
