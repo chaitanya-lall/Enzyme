@@ -16,11 +16,12 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
 import streamlit.components.v1 as _components
-from predict import predict_movie, _load_all, find_similar_movie_combined, search_omdb
 from streamlit_searchbox import st_searchbox
+from predict import predict_movie, _load_all, find_similar_movie_combined, search_omdb
 from predict_noel import predict_movie_noel, _load_all as _load_all_noel
-from config import TAG_TAXONOMY, PARENTS_GUIDE_CSV
+from config import TAG_TAXONOMY, PARENTS_GUIDE_CSV, CATALOG_PATH, CHAI_SEEN_FILE, NOEL_SEEN_FILE
 from tag_features import tag_col_name
+from catalog_sync import start_background_sync, get_sync_status, catalog_age_days
 
 # ─── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -59,6 +60,18 @@ div[data-testid="stTextInput"] > div > div {
 }
 div[data-testid="stTextInput"] label { display: none !important; }
 
+/* Rounded corners on the searchbox iframe itself */
+iframe[title="streamlit_searchbox.searchbox"] {
+  border-radius: 10px !important;
+  overflow: hidden !important;
+}
+
+/* Tighten vertical spacing around the search bar */
+.stElementContainer:has(iframe[title="streamlit_searchbox.searchbox"]) {
+  margin-top: -16px !important;
+  margin-bottom: 0 !important;
+}
+
 /* Row container — gap between the three cards */
 div[data-testid="stHorizontalBlock"] {
   gap: 0.75rem !important;
@@ -66,17 +79,15 @@ div[data-testid="stHorizontalBlock"] {
   background: transparent !important;
 }
 
-/* All three column cards — same dark box (correct selector: stColumn) */
-div[data-testid="stColumn"] {
-  background: #13161f !important;
-  border-radius: 13px !important;
-  overflow: hidden !important;
-}
-
 /* Match columns (2nd and 3rd) — padding inside the card */
 div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2),
 div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(3) {
   padding: 1.4rem !important;
+}
+/* Override for catalog grid — strip padding from ALL positions */
+div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2):has(.catalog-card),
+div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(3):has(.catalog-card) {
+  padding: 0 !important;
 }
 
 /* Movie column (1st) — overflow visible so Film Profile tags aren't clipped */
@@ -182,16 +193,180 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) 
   }
 }
 
-/* Rounded corners on the searchbox iframe itself */
-iframe[title="streamlit_searchbox.searchbox"] {
-  border-radius: 10px !important;
-  overflow: hidden !important;
+
+/* ── Nav bar ─────────────────────────────────────── */
+/* Nav columns — :has(.nav-btn) targets the nav horizontal block specifically */
+div[data-testid="stHorizontalBlock"]:has(.nav-btn) > div[data-testid="stColumn"],
+div[data-testid="stHorizontalBlock"]:has(.nav-btn) > div[data-testid="stColumn"]:nth-child(2),
+div[data-testid="stHorizontalBlock"]:has(.nav-btn) > div[data-testid="stColumn"]:nth-child(3) {
+  background: transparent !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+  padding: 0 0.2rem !important;
+}
+/* Nav buttons — pill shape */
+div[data-testid="stHorizontalBlock"]:has(.nav-btn) button {
+  border-radius: 20px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.08em !important;
+  font-size: 0.82rem !important;
+  text-transform: uppercase !important;
+  padding: 0.45rem 1.1rem !important;
+  border: none !important;
+  height: 2.4rem !important;
+  margin-top: 0.6rem !important;
 }
 
-/* Tighten vertical spacing around the search bar */
-.stElementContainer:has(iframe[title="streamlit_searchbox.searchbox"]) {
-  margin-top: -16px !important;
-  margin-bottom: 0 !important;
+/* ── Catalog cards ───────────────────────────────── */
+/* Reset column padding/overflow for columns that contain a catalog card */
+div[data-testid="stColumn"]:has(.catalog-card) {
+  padding: 0 !important;
+  overflow: hidden !important;
+  border-radius: 13px !important;
+}
+.catalog-card {
+  background: #13161f;
+  border-radius: 13px;
+  overflow: hidden;
+}
+.catalog-card-body {
+  padding: 0.6rem 0.7rem 0.5rem 0.7rem;
+}
+.catalog-card-title {
+  font-size: 0.82rem; font-weight: 700; color: #e2e8f0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-bottom: 0.1rem;
+}
+.catalog-card-year { font-size: 0.72rem; color: #6b7280; margin-bottom: 0.3rem; }
+.catalog-card-scores { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.1rem; }
+/* Details button inside a card column */
+div[data-testid="stColumn"]:has(.catalog-card) .stButton > button {
+  width: 100%;
+  background: #1a1f2e !important;
+  color: #6b7280 !important;
+  border: none !important;
+  border-top: 1px solid #1f2937 !important;
+  border-radius: 0 !important;
+  font-size: 0.72rem !important;
+  padding: 0.25rem 0.5rem !important;
+  margin-top: 0 !important;
+  letter-spacing: 0.04em !important;
+}
+div[data-testid="stColumn"]:has(.catalog-card) .stButton > button:hover {
+  background: #252d42 !important;
+  color: #e2e8f0 !important;
+}
+/* ── Filter bar ──────────────────────────────────── */
+.st-key-filter-bar {
+  background: transparent;
+  padding: 0 0 1.2rem 0;
+  margin-bottom: 0;
+  border: none;
+}
+/* Vertically center ALL columns in the filter row */
+.st-key-filter-bar div[data-testid="stHorizontalBlock"] {
+  align-items: center !important;
+  gap: 0.3rem !important;
+}
+.st-key-filter-bar [data-testid="stColumn"] {
+  background: transparent !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+  padding: 0 !important;
+}
+/* Strip all internal spacing so nothing pushes elements out of alignment */
+.st-key-filter-bar [data-testid="stElementContainer"],
+.st-key-filter-bar [data-testid="stVerticalBlock"] {
+  gap: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+/* Pill buttons — all popover triggers AND the Clear all button */
+.st-key-filter-bar button {
+  border-radius: 20px !important;
+  font-size: 0.84rem !important;
+  font-weight: 500 !important;
+  height: 2.2rem !important;
+  white-space: nowrap !important;
+}
+/* Popover trigger pills — identical fixed width, outlined style */
+.st-key-filter-bar [data-testid="stPopover"] {
+  width: 100% !important;
+}
+.st-key-filter-bar [data-testid="stPopover"] button {
+  background: #ffffff !important;
+  border: 1px solid #d1d5db !important;
+  width: 100% !important;
+  padding: 0 0.9rem !important;
+  text-align: center !important;
+  justify-content: center !important;
+}
+/* Force black text on the <p> tag where Streamlit actually renders button labels */
+.st-key-filter-bar [data-testid="stPopover"] button p,
+.st-key-filter-bar [data-testid="stPopover"] button div,
+.st-key-filter-bar [data-testid="stPopover"] button span {
+  color: #000000 !important;
+}
+.st-key-filter-bar [data-testid="stPopover"] button:hover {
+  border-color: #4f8ef7 !important;
+}
+/* Fix: nth-child(2/3) global padding rule has higher specificity — counter it for filter bar */
+.st-key-filter-bar div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2),
+.st-key-filter-bar div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(3) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+/* Clear all — borderless text */
+.st-key-filter-bar [data-testid="stBaseButton-secondary"]:not([data-testid="stPopover"] button) {
+  background: transparent !important;
+  border: none !important;
+  color: #6b7280 !important;
+  font-weight: 400 !important;
+  padding: 0 0.3rem !important;
+}
+.st-key-filter-bar [data-testid="stBaseButton-secondary"]:not([data-testid="stPopover"] button):hover {
+  color: #111827 !important;
+}
+/* Sort selectbox — pill style */
+.st-key-filter-bar [data-testid="stSelectbox"] > div > div {
+  background: #ffffff !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 20px !important;
+  font-size: 0.84rem !important;
+  font-weight: 500 !important;
+  min-height: 2.2rem !important;
+  color: #000000 !important;
+  padding: 0 0.5rem 0 0.9rem !important;
+}
+/* Sliders inside popovers */
+[data-testid="stPopoverBody"] [data-testid="stSlider"] {
+  padding: 0.5rem 0.2rem !important;
+  min-width: 220px;
+}
+/* Multiselect inside popovers */
+[data-testid="stPopoverBody"] [data-testid="stMultiSelect"] > div > div {
+  background: #131825 !important;
+  border: 1px solid #252f42 !important;
+  border-radius: 8px !important;
+  font-size: 0.84rem !important;
+  min-width: 200px;
+}
+[data-testid="stPopoverBody"] [data-testid="stMultiSelect"] [data-testid="stMultiSelectOption"] {
+  font-size: 0.84rem !important;
+}
+/* Separator pipe */
+.filter-sep {
+  color: #374151;
+  font-size: 1.2rem;
+  line-height: 2.2rem;
+  text-align: center;
+  user-select: none;
+}
+/* Modal column backgrounds */
+[data-testid="stModal"] div[data-testid="stColumn"] {
+  background: transparent !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
 }
 
 </style>
@@ -666,113 +841,16 @@ def render_meter_column(rec: dict, meter_result: dict, person: str,
     return full_text
 
 
-# ─── Main app ─────────────────────────────────────────────────────────────────
+# ─── Catalog UI helpers ───────────────────────────────────────────────────────
 
-def main():
-    preload_artifacts()
-    preload_artifacts_noel()
-
-    _LOGO_B64_HDR = open(
-        os.path.join(os.path.dirname(__file__), "assets", "logo_b64.txt")
-    ).read().strip()
-
-    st.markdown(
-        f"""<div style='display:flex; align-items:center; gap:0.65rem; 
-                        padding:0.5rem 0 0.75rem 0;'>
-  <img src='data:image/png;base64,{_LOGO_B64_HDR}'
-       style='height:42px; width:auto; opacity:0.95;'/>
-  <div>
-    <div style='font-size:1.89rem; font-weight:900; letter-spacing:0.30em;
-                text-transform:uppercase; color:#ffffff; line-height:1;'>ENZYME</div>
-    <div style='font-size:0.88rem; color:#6b7280; letter-spacing:0.10em;
-                font-weight:400; margin-top:2px;'>Movies and Shows, broken down for you.</div>
-  </div>
-</div>""",
-        unsafe_allow_html=True,
-    )
-
-    # Inject "Source Sans Pro" font into the searchbox iframe so it matches the main page.
-    # style_overrides only reaches the raw <input>; emotion-CSS divs need a direct <style> injection.
-    _components.html("""
-<script>
-(function() {
-  function injectFont(iframe) {
-    try {
-      var doc = iframe.contentDocument || iframe.contentWindow.document;
-      if (!doc || !doc.head || doc._fontInjected) return;
-      doc._fontInjected = true;
-      var link = doc.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = 'https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600&display=swap';
-      doc.head.appendChild(link);
-      var s = doc.createElement('style');
-      s.textContent = '*, input, div, span { font-family: \\'Source Sans Pro\\', sans-serif !important; } [class*="-control"] { border-radius: 10px !important; }';
-      doc.head.appendChild(s);
-    } catch(e) {}
-  }
-  function scan() {
-    var iframe = parent.document.querySelector('iframe[title="streamlit_searchbox.searchbox"]');
-    if (!iframe) return;
-    if (iframe.contentDocument && iframe.contentDocument.head) {
-      injectFont(iframe);
-    } else {
-      iframe.addEventListener('load', function() { injectFont(iframe); });
-    }
-  }
-  new MutationObserver(scan).observe(parent.document.body, { childList: true, subtree: true });
-  scan();
-})();
-</script>
-""", height=0)
-
-    def _movie_search(q: str):
-        if not q or len(q) < 2:
-            return []
-        matches = search_omdb(q)
-        return [(f"{m['title']} ({m['year']})", m["imdbID"]) for m in matches]
-
-    _FONT = "'Source Sans Pro', sans-serif"
-    selected = st_searchbox(
-        _movie_search,
-        placeholder="🔍  Search a movie title…",
-        key="movie_searchbox",
-        clear_on_submit=False,
-        style_absolute=True,
-        style_overrides={
-            "searchbox": {
-                "optionEmpty": "hidden",
-                "input":       {"fontFamily": _FONT, "fontSize": "1rem"},
-                "placeholder": {"fontFamily": _FONT, "fontSize": "1rem"},
-                "singleValue": {"fontFamily": _FONT, "fontSize": "1rem"},
-                "control":     {"fontFamily": _FONT, "borderRadius": "10px"},
-                "menuList":    {"fontFamily": _FONT, "fontSize": "1rem"},
-                "option":      {"fontFamily": _FONT, "fontSize": "1rem"},
-            }
-        },
-    )
-
-    st.markdown(
-        "<div style='border-bottom:1px solid #1f2937; margin:-1rem 0 1.4rem 0;'></div>",
-        unsafe_allow_html=True,
-    )
-
-    # Persist the last selection so clearing the search bar (X button or
-    # backspace) does not wipe the displayed movie — the view only updates
-    # when a new movie is explicitly selected from the results.
-    if selected:
-        st.session_state["last_selected_imdb"] = selected
-    selected_imdb_id = st.session_state.get("last_selected_imdb")
-
-    if not selected_imdb_id:
-        return
-
-    # Only recompute when the selected movie actually changes.
-    # Re-runs triggered by clearing the search bar (X / backspace) reuse the
-    # cached payload so there is no spinner or visual reload.
-    _cache_hit = st.session_state.get("_cached_imdb") == selected_imdb_id
+def _render_movie_analysis(imdb_id: str, pfx: str = "_cached") -> None:
+    """Fetch and render the full 3-column movie analysis.
+    Shared between the Search tab (pfx='_cached') and the bottom sheet (pfx='_modal').
+    """
+    _cache_hit = st.session_state.get(f"{pfx}_imdb") == imdb_id
     if not _cache_hit:
         with st.spinner("Analyzing…"):
-            result = predict_movie("", imdb_id=selected_imdb_id)
+            result = predict_movie("", imdb_id=imdb_id)
 
         if result is None:
             st.error("Could not load this title. The daily API limit may have been reached.")
@@ -805,25 +883,25 @@ def main():
             noel_artifacts = noel_artifacts,
         )
 
-        st.session_state["_cached_imdb"]          = selected_imdb_id
-        st.session_state["_cached_rec"]           = rec
-        st.session_state["_cached_tags_dict"]     = tags_dict
-        st.session_state["_cached_pg_ratings"]    = result.get("pg_ratings")
-        st.session_state["_cached_chai_result"]   = chai_result
-        st.session_state["_cached_noel_result"]   = noel_result
-        st.session_state["_cached_chai_anchor"]   = chai_anchor
-        st.session_state["_cached_noel_anchor"]   = noel_anchor
-        st.session_state["_cached_chai_artifacts"] = chai_artifacts
-        st.session_state["_cached_noel_artifacts"] = noel_artifacts
+        st.session_state[f"{pfx}_imdb"]           = imdb_id
+        st.session_state[f"{pfx}_rec"]            = rec
+        st.session_state[f"{pfx}_tags_dict"]      = tags_dict
+        st.session_state[f"{pfx}_pg_ratings"]     = result.get("pg_ratings")
+        st.session_state[f"{pfx}_chai_result"]    = chai_result
+        st.session_state[f"{pfx}_noel_result"]    = noel_result
+        st.session_state[f"{pfx}_chai_anchor"]    = chai_anchor
+        st.session_state[f"{pfx}_noel_anchor"]    = noel_anchor
+        st.session_state[f"{pfx}_chai_artifacts"] = chai_artifacts
+        st.session_state[f"{pfx}_noel_artifacts"] = noel_artifacts
     else:
-        rec            = st.session_state["_cached_rec"]
-        tags_dict      = st.session_state["_cached_tags_dict"]
-        chai_result    = st.session_state["_cached_chai_result"]
-        noel_result    = st.session_state["_cached_noel_result"]
-        chai_anchor    = st.session_state["_cached_chai_anchor"]
-        noel_anchor    = st.session_state["_cached_noel_anchor"]
-        chai_artifacts = st.session_state["_cached_chai_artifacts"]
-        noel_artifacts = st.session_state["_cached_noel_artifacts"]
+        rec            = st.session_state[f"{pfx}_rec"]
+        tags_dict      = st.session_state[f"{pfx}_tags_dict"]
+        chai_result    = st.session_state[f"{pfx}_chai_result"]
+        noel_result    = st.session_state[f"{pfx}_noel_result"]
+        chai_anchor    = st.session_state[f"{pfx}_chai_anchor"]
+        noel_anchor    = st.session_state[f"{pfx}_noel_anchor"]
+        chai_artifacts = st.session_state[f"{pfx}_chai_artifacts"]
+        noel_artifacts = st.session_state[f"{pfx}_noel_artifacts"]
 
     # ── Three columns: Movie Details | Chai's Movie-Meter | Noel's Movie-Meter
     col_movie, col_chai, col_noel = st.columns([2.5, 3.75, 3.75], gap="large")
@@ -1009,12 +1087,12 @@ def main():
                     f"<div style='display:flex; flex-wrap:wrap; gap:0.2rem 0;'>{pills}</div>"
                 )
 
-        # Parents Guide badges — prefer live scraped data, fall back to CSV cache
+        # Parents Guide — prefer live scraped data, fall back to CSV cache
         pg_html = ""
-        imdb_id = rec.get("imdbID", "")
-        _live_pg = st.session_state.get("_cached_pg_ratings")
+        imdb_id_rec = rec.get("imdbID", "")
+        _live_pg = st.session_state.get(f"{pfx}_pg_ratings")
         pg_data = load_parents_guide()
-        _csv_pg = pg_data.get(imdb_id) if imdb_id else None
+        _csv_pg = pg_data.get(imdb_id_rec) if imdb_id_rec else None
         _pg_rec = _live_pg or _csv_pg
         if _pg_rec:
             PG_CATEGORIES = [
@@ -1034,7 +1112,6 @@ def main():
             pg_rec = _pg_rec
             for col_key, cat_label in PG_CATEGORIES:
                 raw_rating = pg_rec.get(col_key, "")
-                # Normalise: anything not in the 4 tiers (e.g. empty/"nan") → "None"
                 rating = raw_rating if raw_rating in ("Mild", "Moderate", "Severe") else "None"
                 bg, fg = PG_COLORS[rating]
                 rows += (
@@ -1052,11 +1129,6 @@ def main():
                     f"<div style='display:flex; flex-direction:column; gap:0.05rem;'>{rows}</div>"
                 )
 
-        # Assemble full card
-        # NOTE: optional sections are pre-concatenated so empty strings never
-        # produce a whitespace-only line inside the f-string, which would be
-        # treated as a blank line by CommonMark and terminate the HTML block early,
-        # causing subsequent sections to render as indented code blocks (raw text).
         _body = "".join([
             f"<div style='margin-bottom:0.25rem;'>{chips_html}</div>",
             dir_html,
@@ -1081,19 +1153,623 @@ def main():
         chai_narrative = render_meter_column(
             rec, chai_result, "Chai", anchor=chai_anchor,
             train_meta=chai_artifacts["train_meta"],
-            cached_narrative=st.session_state.get("_cached_chai_narrative") if _cache_hit else None,
+            cached_narrative=st.session_state.get(f"{pfx}_chai_narrative") if _cache_hit else None,
         )
         if not _cache_hit:
-            st.session_state["_cached_chai_narrative"] = chai_narrative
+            st.session_state[f"{pfx}_chai_narrative"] = chai_narrative
 
     with col_noel:
         noel_narrative = render_meter_column(
             rec, noel_result, "Noel", anchor=noel_anchor,
             train_meta=noel_artifacts["train_meta"],
-            cached_narrative=st.session_state.get("_cached_noel_narrative") if _cache_hit else None,
+            cached_narrative=st.session_state.get(f"{pfx}_noel_narrative") if _cache_hit else None,
         )
         if not _cache_hit:
-            st.session_state["_cached_noel_narrative"] = noel_narrative
+            st.session_state[f"{pfx}_noel_narrative"] = noel_narrative
+
+
+@st.dialog(" ", width="large")
+def catalog_movie_detail(imdb_id: str) -> None:
+    """Bottom sheet — full movie analysis identical to the Search tab view."""
+    st.markdown("""<style>
+/* ── Bottom sheet: override Streamlit dialog → full-width, slides from bottom ── */
+[data-testid="stDialog"] {
+  position: fixed !important;
+  bottom: 0 !important; left: 0 !important; right: 0 !important; top: auto !important;
+  width: 100vw !important; max-width: 100vw !important;
+  height: 80vh !important; max-height: 80vh !important;
+  border-radius: 20px 20px 0 0 !important;
+  margin: 0 !important;
+  background: #0a0b0f !important;
+  overflow-y: auto !important; overflow-x: hidden !important;
+  animation: sheetUp 0.35s cubic-bezier(0.32, 0.72, 0, 1) !important;
+}
+@keyframes sheetUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+/* Inner white dialog box → match app background */
+[data-testid="stDialog"] > div > div {
+  background: #0a0b0f !important;
+  border: none !important;
+  box-shadow: 0 -4px 24px rgba(0,0,0,0.6) !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  padding: 0 !important;
+}
+/* Depth-3 content containers — halve Streamlit's default 24px padding */
+[data-testid="stDialog"] > div > div > div {
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+  padding-top: 12px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+/* Dark column boxes inside the sheet (mirrors Search tab styling) */
+[data-testid="stDialog"] [data-testid="stColumn"] {
+  background: #13161f !important;
+  border-radius: 13px !important;
+  overflow: hidden !important;
+}
+/* Restore nth-child padding for the analysis columns inside dialog */
+[data-testid="stDialog"] [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2),
+[data-testid="stDialog"] [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(3) {
+  padding: 1.4rem !important;
+}
+</style>""", unsafe_allow_html=True)
+
+    _render_movie_analysis(imdb_id, pfx="_modal")
+
+
+def _render_catalog_card(item) -> None:
+    """Render one catalog card (HTML + a Details button)."""
+    poster_url = str(item.get("poster_url") or "")
+    title      = str(item.get("title") or "Unknown")
+    year       = item.get("year")
+    imdb       = item.get("imdb_score")
+    chai_pct   = float(item.get("chai_pct") or 0)
+    noel_pct   = float(item.get("noel_pct") or 0)
+    service    = str(item.get("service") or "").lower()
+
+    def _sc(pct: float) -> str:
+        if pct >= 90:   return "#FFD700"
+        elif pct >= 70: return "#4f8ef7"
+        elif pct >= 50: return "#708090"
+        else:           return "#555555"
+
+    # padding-bottom trick: enforces 2:3 ratio in all browsers regardless of image natural size
+    _poster_wrap = "position:relative; width:100%; padding-bottom:150%; overflow:hidden;"
+    _poster_inner = "position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; display:block;"
+    if poster_url and poster_url not in ("N/A", "nan", ""):
+        poster_html = (
+            f"<div style='{_poster_wrap}'>"
+            f"<img src='{poster_url}' loading='lazy' style='{_poster_inner}'/>"
+            f"</div>"
+        )
+    else:
+        poster_html = (
+            f"<div style='{_poster_wrap} background:#1a1f2e;'>"
+            f"<div style='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:2rem;'>🎬</div>"
+            f"</div>"
+        )
+
+    svc_colors = {"netflix": "#E50914", "max": "#0056FF"}
+    svc_color  = svc_colors.get(service, "#444")
+    svc_badge  = (
+        f"<span style='position:absolute; top:6px; right:6px; background:{svc_color}; "
+        f"color:white; font-size:0.6rem; font-weight:800; padding:0.12rem 0.35rem; "
+        f"border-radius:3px; letter-spacing:0.04em;'>{service.title()}</span>"
+    ) if service else ""
+
+    imdb_badge = (
+        f"<span style='position:absolute; top:6px; left:6px; background:rgba(0,0,0,0.72); "
+        f"color:#f5c518; font-size:0.68rem; font-weight:700; padding:0.12rem 0.35rem; "
+        f"border-radius:3px;'>⭐ {imdb:.1f}</span>"
+    ) if imdb else ""
+
+    year_str   = str(int(year)) if year else ""
+    title_esc  = title.replace("'", "&#39;").replace('"', "&quot;")
+
+    card_html = f"""
+<div class='catalog-card'>
+  <div style='position:relative;'>
+    {poster_html}
+    {svc_badge}{imdb_badge}
+  </div>
+  <div class='catalog-card-body'>
+    <div class='catalog-card-title' title='{title_esc}'>{title}</div>
+    <div class='catalog-card-year'>{year_str}</div>
+    <div class='catalog-card-scores'>
+      <span style='font-size:0.75rem; font-weight:700; color:{_sc(chai_pct)};'>Chai {chai_pct:.0f}%</span>
+      <span style='font-size:0.75rem; font-weight:700; color:{_sc(noel_pct)};'>Noel {noel_pct:.0f}%</span>
+    </div>
+  </div>
+</div>
+"""
+    st.markdown(card_html, unsafe_allow_html=True)
+    btn_key = f"cat_{item.get('imdb_id', '')}_{abs(hash(title)) % 999999}"
+    if st.button("Details", key=btn_key, use_container_width=True):
+        imdb_id = item.get("imdb_id", "")
+        if imdb_id:
+            catalog_movie_detail(imdb_id)
+
+
+@st.cache_data(show_spinner=False, ttl=300)
+def _ids_from_seen_numbers(path: str) -> set:
+    """Extract IMDb IDs (tt...) from a *Seen.numbers file's URL column."""
+    import re
+    import warnings
+    try:
+        import numbers_parser
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            doc = numbers_parser.Document(path)
+        rows = doc.sheets[0].tables[0].rows(values_only=True)
+        ids = set()
+        for row in rows:
+            for cell in row:
+                if isinstance(cell, str) and "imdb.com/title/" in cell:
+                    m = re.search(r"tt\d+", cell)
+                    if m:
+                        ids.add(m.group(0))
+        return ids
+    except Exception:
+        return set()
+
+
+def _load_catalog() -> "pd.DataFrame":
+    import pandas as pd
+    df = pd.read_parquet(CATALOG_PATH)
+    # Annotate which movies each user has seen (from their Seen.numbers files)
+    chai_ids = _ids_from_seen_numbers(CHAI_SEEN_FILE)
+    noel_ids = _ids_from_seen_numbers(NOEL_SEEN_FILE)
+    df["chai_seen"] = df["imdb_id"].isin(chai_ids)
+    df["noel_seen"] = df["imdb_id"].isin(noel_ids)
+    return df
+
+
+def render_recommend_tab() -> None:
+    """Render the 🍿 Recommend tab content."""
+    import os
+    import pandas as pd
+
+    sync_status = get_sync_status()
+
+    # Catalog not yet built
+    if not os.path.exists(CATALOG_PATH):
+        if sync_status["running"]:
+            st.info(
+                "⏳ Building your catalog for the first time — this may take a few minutes. "
+                "Come back soon!",
+                icon="🔄",
+            )
+        else:
+            st.markdown(
+                """
+<div style='text-align:center; padding:3rem 1rem;'>
+  <div style='font-size:3.5rem; margin-bottom:1rem;'>🍿</div>
+  <h3 style='color:#e2e8f0; margin-bottom:0.5rem;'>Catalog Not Yet Built</h3>
+  <p style='color:#6b7280; max-width:520px; margin:0 auto 1.5rem auto; line-height:1.7;'>
+    Run the one-time seed script to pull Netflix &amp; Max content and pre-score everything.
+    You'll need a <strong style='color:#e2e8f0;'>Watchmode API key</strong>
+    (free at <code>api.watchmode.com</code>) in <code>.streamlit/secrets.toml</code>.
+  </p>
+  <code style='display:inline-block; background:#1e2536; padding:0.45rem 1rem;
+               border-radius:8px; font-size:0.86rem; color:#4f8ef7;
+               border:1px solid #2d3748;'>python catalog_seed.py</code>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+        return
+
+    df = _load_catalog()
+
+    # ── Filter bar ────────────────────────────────────────────────────────────
+    _svc_netflix      = st.session_state.get("f_svc_netflix",  False)
+    _svc_max          = st.session_state.get("f_svc_max",      False)
+    _svc_disney       = st.session_state.get("f_svc_disney",   False)
+    _svc_hulu         = st.session_state.get("f_svc_hulu",     False)
+    _svc_apple        = st.session_state.get("f_svc_apple",    False)
+    _svc_peacock      = st.session_state.get("f_svc_peacock",  False)
+    _svc_paramount    = st.session_state.get("f_svc_paramount",False)
+    _type_movies      = st.session_state.get("f_type_movies",  False)
+    _type_tv          = st.session_state.get("f_type_tv",      False)
+    _w_chai_seen      = st.session_state.get("f_w_chai_seen",      False)
+    _w_chai_not_seen  = st.session_state.get("f_w_chai_not_seen",  False)
+    _w_noel_seen      = st.session_state.get("f_w_noel_seen",      False)
+    _w_noel_not_seen  = st.session_state.get("f_w_noel_not_seen",  False)
+    _imdb_val         = float(st.session_state.get("f_imdb", 0.0))
+    _yr_val           = st.session_state.get("f_yr", (1950, 2026))
+
+    # Map display name → catalog service key
+    _SVC_MAP = {
+        "Netflix":    "netflix",
+        "Max":        "max",
+        "Disney+":    "disney",
+        "Hulu":       "hulu",
+        "Apple TV+":  "apple",
+        "Peacock":    "peacock",
+        "Paramount+": "paramount",
+    }
+    services      = [k for k, v in [
+        ("Netflix",    _svc_netflix),
+        ("Max",        _svc_max),
+        ("Disney+",    _svc_disney),
+        ("Hulu",       _svc_hulu),
+        ("Apple TV+",  _svc_apple),
+        ("Peacock",    _svc_peacock),
+        ("Paramount+", _svc_paramount),
+    ] if v]
+    content_types = [t for t, v in [("Movies", _type_movies), ("TV Shows", _type_tv)] if v]
+    _watch_sel    = [w for w, v in [
+        ("Chai Seen",     _w_chai_seen),
+        ("Chai Not Seen", _w_chai_not_seen),
+        ("Noel Seen",     _w_noel_seen),
+        ("Noel Not Seen", _w_noel_not_seen),
+    ] if v]
+
+    _svc_lbl = (
+        f"{len(services)} Services" if len(services) > 1
+        else (services[0] if services else "All Services")
+    )
+    _both_types = _type_movies and _type_tv
+    _type_lbl = (
+        "Movies & TV" if (not _type_movies and not _type_tv) or _both_types
+        else ("Movies" if _type_movies else "TV Shows")
+    )
+    _watch_lbl = (
+        f"{len(_watch_sel)} Statuses" if len(_watch_sel) > 1
+        else (_watch_sel[0] if _watch_sel else "Watch Status")
+    )
+    _imdb_lbl = f"IMDb ≥ {_imdb_val:.1f}" if _imdb_val > 0 else "IMDb Score"
+    _yr_lbl   = f"{_yr_val[0]}–{_yr_val[1]}" if _yr_val != (1950, 2026) else "Release Year"
+
+    _any_active = bool(services or content_types or _watch_sel or _imdb_val > 0 or _yr_val != (1950, 2026))
+
+    # Active pill highlights — columns in order: svc(1) type(2) watch(3) imdb(4) yr(5)
+    _pill_css = ""
+    for _i, _active in enumerate([bool(services), bool(content_types), bool(_watch_sel),
+                                   _imdb_val > 0, _yr_val != (1950, 2026)], 1):
+        if _active:
+            _pill_css += (
+                f".st-key-filter-bar [data-testid='stColumn']:nth-child({_i})"
+                f" [data-testid='stPopover'] button {{"
+                f"background:#4f8ef7!important;border-color:#4f8ef7!important;"
+                f"color:#ffffff!important;}}"
+            )
+    if _pill_css:
+        st.markdown(f"<style>{_pill_css}</style>", unsafe_allow_html=True)
+
+    with st.container(key="filter-bar"):
+        fc_svc, fc_type, fc_watch, fc_imdb, fc_yr, fc_sep, fc_clr, fc_srt = st.columns(
+            [1.6, 1.6, 1.6, 1.6, 1.6, 0.12, 0.9, 2.2], vertical_alignment="center"
+        )
+        with fc_svc:
+            with st.popover(_svc_lbl, use_container_width=True):
+                st.checkbox("Netflix",  key="f_svc_netflix")
+                st.checkbox("Max",      key="f_svc_max")
+                st.checkbox("Disney+", key="f_svc_disney")
+                st.checkbox("Hulu",        key="f_svc_hulu")
+                st.checkbox("Apple TV+",   key="f_svc_apple")
+                st.checkbox("Peacock",     key="f_svc_peacock")
+                st.checkbox("Paramount+",  key="f_svc_paramount")
+        with fc_type:
+            with st.popover(_type_lbl, use_container_width=True):
+                st.checkbox("Movies",   key="f_type_movies")
+                st.checkbox("TV Shows", key="f_type_tv")
+        with fc_watch:
+            with st.popover(_watch_lbl, use_container_width=True):
+                st.checkbox("Chai Seen",     key="f_w_chai_seen")
+                st.checkbox("Chai Not Seen", key="f_w_chai_not_seen")
+                st.checkbox("Noel Seen",     key="f_w_noel_seen")
+                st.checkbox("Noel Not Seen", key="f_w_noel_not_seen")
+        with fc_imdb:
+            with st.popover(_imdb_lbl, use_container_width=True):
+                min_imdb = st.slider(
+                    "Min IMDb", 0.0, 10.0, value=0.0, step=0.5,
+                    format="%.1f", key="f_imdb",
+                )
+        with fc_yr:
+            with st.popover(_yr_lbl, use_container_width=True):
+                year_range = st.slider(
+                    "Year", 1900, 2026, value=(1950, 2026), key="f_yr",
+                )
+        with fc_sep:
+            st.markdown("<div class='filter-sep'>|</div>", unsafe_allow_html=True)
+        with fc_clr:
+            if st.button("Clear all", key="f_clear", disabled=not _any_active):
+                for _k in ["f_svc_netflix", "f_svc_max", "f_svc_disney",
+                            "f_svc_hulu", "f_svc_apple", "f_svc_peacock", "f_svc_paramount",
+                            "f_type_movies", "f_type_tv",
+                            "f_w_chai_seen", "f_w_chai_not_seen", "f_w_noel_seen", "f_w_noel_not_seen",
+                            "f_imdb", "f_yr"]:
+                    st.session_state.pop(_k, None)
+                st.rerun()
+        with fc_srt:
+            sort_by = st.selectbox(
+                "Sort",
+                ["Compatibility", "Chai Score", "Noel Score", "IMDb Score", "Newest First"],
+                format_func=lambda x: f"Sort: {x}",
+                label_visibility="collapsed", key="f_sort",
+            )
+
+    # ── Apply filters ─────────────────────────────────────────────────────────
+    dff = df.copy()
+    if services:
+        dff = dff[dff["service"].isin([_SVC_MAP.get(s, s.lower()) for s in services])]
+    if content_types:
+        _type_map = {"Movies": "movie", "TV Shows": "tv"}
+        dff = dff[dff["type"].isin([_type_map[t] for t in content_types])]
+    if _watch_sel:
+        import numpy as np
+        _masks = []
+        for _ws in _watch_sel:
+            if _ws == "Chai Seen":
+                _masks.append(dff["chai_seen"].astype(bool))
+            elif _ws == "Chai Not Seen":
+                _masks.append(~dff["chai_seen"].astype(bool))
+            elif _ws == "Noel Seen":
+                _masks.append(dff["noel_seen"].astype(bool))
+            elif _ws == "Noel Not Seen":
+                _masks.append(~dff["noel_seen"].astype(bool))
+        if _masks:
+            _combined = _masks[0]
+            for _m in _masks[1:]:
+                _combined = _combined & _m
+            dff = dff[_combined]
+    if min_imdb > 0:
+        dff = dff[dff["imdb_score"].notna() & (dff["imdb_score"] >= min_imdb)]
+    year_from, year_to = year_range
+    if "year" in dff.columns:
+        dff = dff[dff["year"].notna() & (dff["year"] >= year_from) & (dff["year"] <= year_to)]
+
+    # ── Sort ──────────────────────────────────────────────────────────────────
+    if sort_by == "Chai Score":
+        dff = dff.sort_values("chai_pct", ascending=False)
+    elif sort_by == "Noel Score":
+        dff = dff.sort_values("noel_pct", ascending=False)
+    elif sort_by == "Compatibility":
+        dff = dff.assign(_compat=(dff["chai_pct"] + dff["noel_pct"]) / 2).sort_values("_compat", ascending=False)
+    elif sort_by == "IMDb Score":
+        dff = dff.sort_values("imdb_score", ascending=False, na_position="last")
+    elif sort_by == "Newest First":
+        dff = dff.sort_values("year", ascending=False, na_position="last")
+
+    # ── Grid (paginated — 16 items per page) ──────────────────────────────────
+    # Reset page when filters change (use a hash of filter state as key)
+    _filter_key = f"{services}|{content_types}|{_watch_sel}|{min_imdb}|{year_range}|{sort_by}"
+    if st.session_state.get("_catalog_filter_key") != _filter_key:
+        st.session_state["_catalog_filter_key"] = _filter_key
+        st.session_state["_catalog_visible"] = 8
+
+    visible = st.session_state.get("_catalog_visible", 8)
+
+    if len(dff) == 0:
+        st.markdown(
+            "<div style='text-align:center; padding:2.5rem; color:#6b7280;'>"
+            "No matches found — try adjusting your filters!</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        N = 4
+        dff_reset = dff.reset_index(drop=True).iloc[:visible]
+        for row_start in range(0, len(dff_reset), N):
+            chunk = dff_reset.iloc[row_start: row_start + N]
+            cols  = st.columns(N)
+            for j, (_, item) in enumerate(chunk.iterrows()):
+                with cols[j]:
+                    _render_catalog_card(item)
+            st.markdown("<div style='margin-bottom:0.5rem;'></div>",
+                        unsafe_allow_html=True)
+
+        if visible < len(dff):
+            remaining = len(dff) - visible
+            _, load_col, _ = st.columns([2, 1, 2])
+            with load_col:
+                if st.button(
+                    f"Load more  (+{min(16, remaining)})",
+                    key="catalog_load_more",
+                    use_container_width=True,
+                ):
+                    st.session_state["_catalog_visible"] = visible + 16
+                    st.rerun()
+
+    # ── Footer ────────────────────────────────────────────────────────────────
+    age = catalog_age_days()
+    if age is not None:
+        age_str = f"{int(age)} day{'s' if age >= 2 else ''} ago" if age >= 1 else "today"
+    else:
+        age_str = "unknown"
+    syncing_str = " · 🔄 Syncing in background…" if sync_status["running"] else ""
+    st.markdown(
+        f"<div style='text-align:center; font-size:0.72rem; color:#374151; "
+        f"padding:1.5rem 0 0.5rem 0;'>"
+        f"Last Sync: {age_str} · {len(df):,} Titles Available{syncing_str}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+# ─── Main app ─────────────────────────────────────────────────────────────────
+
+def main():
+    preload_artifacts()
+    preload_artifacts_noel()
+
+    # ── Background catalog sync ────────────────────────────────────────────────
+    if start_background_sync():
+        st.session_state["_sync_started_this_session"] = True
+
+    sync_status = get_sync_status()
+    if sync_status["finished"] and sync_status.get("new_count", 0) > 0:
+        if not st.session_state.get("_sync_toast_shown"):
+            st.toast(
+                f"🔄 Catalog refreshed — {sync_status['new_count']:,} titles updated!",
+                icon="🍿",
+            )
+            st.session_state["_sync_toast_shown"] = True
+            _load_catalog.clear()   # invalidate the 5-min cache
+
+    _LOGO_B64_HDR = open(
+        os.path.join(os.path.dirname(__file__), "assets", "logo_b64.txt")
+    ).read().strip()
+    st.session_state["_logo_b64"] = _LOGO_B64_HDR
+
+    # ── Nav bar ───────────────────────────────────────────────────────────────
+    if "active_tab" not in st.session_state:
+        st.session_state["active_tab"] = "recommend"
+
+    active = st.session_state["active_tab"]
+    rec_active  = active == "recommend"
+    srch_active = active == "search"
+
+    # Dynamic CSS: button colours only (searchbox now lives inside _render_search_tab)
+    st.markdown(f"""<style>
+div[data-testid="stHorizontalBlock"]:has(.nav-btn) > div[data-testid="stColumn"]:nth-last-child(2) button {{
+  background: {"#4f8ef7" if rec_active  else "#1e2536"} !important;
+  color:      {"#ffffff" if rec_active  else "#9ca3af"} !important;
+}}
+div[data-testid="stHorizontalBlock"]:has(.nav-btn) > div[data-testid="stColumn"]:last-child button {{
+  background: {"#4f8ef7" if srch_active else "#1e2536"} !important;
+  color:      {"#ffffff" if srch_active else "#9ca3af"} !important;
+}}
+</style>""", unsafe_allow_html=True)
+
+    col_logo, col_rec, col_srch = st.columns([6.5, 1.6, 1.2])
+
+    with col_logo:
+        # .nav-btn marker identifies this horizontal block for CSS :has() targeting
+        st.markdown(
+            f"""<div class='nav-btn' style='display:flex; align-items:center; gap:0.65rem;
+                            padding:0.4rem 0 0.5rem 0;'>
+  <img src='data:image/png;base64,{_LOGO_B64_HDR}'
+       style='height:42px; width:auto; opacity:0.95;'/>
+  <div>
+    <div style='font-size:1.89rem; font-weight:900; letter-spacing:0.30em;
+                text-transform:uppercase; color:#ffffff; line-height:1;'>ENZYME</div>
+    <div style='font-size:0.88rem; color:#6b7280; letter-spacing:0.10em;
+                font-weight:400; margin-top:2px;'>Movies and Shows, broken down for you.</div>
+  </div>
+</div>""",
+            unsafe_allow_html=True,
+        )
+
+    with col_rec:
+        if st.button("🍿  Recommend", key="nav_btn_rec", use_container_width=True):
+            if st.session_state.get("active_tab") != "recommend":
+                st.session_state["active_tab"] = "recommend"
+                st.rerun()
+
+    with col_srch:
+        if st.button("🔍  Search", key="nav_btn_srch", use_container_width=True):
+            if st.session_state.get("active_tab") != "search":
+                st.session_state["active_tab"] = "search"
+                st.rerun()
+
+    st.markdown(
+        "<hr style='border:none; border-top:1px solid #1f2937; margin:0 0 1rem 0;'/>",
+        unsafe_allow_html=True,
+    )
+
+    # ── Content: search tab (includes its own searchbox) OR recommend grid
+    if active == "search":
+        _render_search_tab()
+    else:
+        render_recommend_tab()
+
+
+def _render_search_tab():
+    """Renders the search bar and movie prediction results."""
+    # ── Searchbox ─────────────────────────────────────────────────────────────
+    _components.html("""
+<script>
+(function() {
+  function injectFont(iframe) {
+    try {
+      var doc = iframe.contentDocument || iframe.contentWindow.document;
+      if (!doc || !doc.head || doc._fontInjected) return;
+      doc._fontInjected = true;
+      var link = doc.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600&display=swap';
+      doc.head.appendChild(link);
+      var s = doc.createElement('style');
+      s.textContent = '*, input, div, span { font-family: \\'Source Sans Pro\\', sans-serif !important; } [class*="-control"] { border-radius: 10px !important; }';
+      doc.head.appendChild(s);
+    } catch(e) {}
+  }
+  function scan() {
+    var iframe = parent.document.querySelector('iframe[title="streamlit_searchbox.searchbox"]');
+    if (!iframe) return;
+    if (iframe.contentDocument && iframe.contentDocument.head) {
+      injectFont(iframe);
+    } else {
+      iframe.addEventListener('load', function() { injectFont(iframe); });
+    }
+  }
+  new MutationObserver(scan).observe(parent.document.body, { childList: true, subtree: true });
+  scan();
+})();
+</script>
+""", height=0)
+
+    def _movie_search(q: str):
+        if not q or len(q) < 2:
+            return []
+        matches = search_omdb(q)
+        return [(f"{m['title']} ({m['year']})", m["imdbID"]) for m in matches]
+
+    _FONT = "'Source Sans Pro', sans-serif"
+    selected = st_searchbox(
+        _movie_search,
+        placeholder="🔍  Search a movie title…",
+        key="movie_searchbox",
+        clear_on_submit=False,
+        style_absolute=True,
+        style_overrides={
+            "searchbox": {
+                "optionEmpty": "hidden",
+                "input":       {"fontFamily": _FONT, "fontSize": "1rem"},
+                "placeholder": {"fontFamily": _FONT, "fontSize": "1rem"},
+                "singleValue": {"fontFamily": _FONT, "fontSize": "1rem"},
+                "control":     {"fontFamily": _FONT, "borderRadius": "10px"},
+                "menuList":    {"fontFamily": _FONT, "fontSize": "1rem"},
+                "option":      {"fontFamily": _FONT, "fontSize": "1rem"},
+            }
+        },
+    )
+    st.markdown(
+        "<div style='border-bottom:1px solid #1f2937; margin:-1rem 0 1.4rem 0;'></div>",
+        unsafe_allow_html=True,
+    )
+    if selected:
+        st.session_state["last_selected_imdb"] = selected
+
+    # ── Results ───────────────────────────────────────────────────────────────
+    selected_imdb_id = st.session_state.get("last_selected_imdb")
+
+    if not selected_imdb_id:
+        return
+
+    # Dark column boxes for results — only injected when on search tab.
+    # Nav columns stay transparent via :has(.nav-btn) override.
+    st.markdown("""<style>
+div[data-testid="stColumn"] {
+  background: #13161f !important;
+  border-radius: 13px !important;
+  overflow: hidden !important;
+}
+div[data-testid="stHorizontalBlock"]:has(.nav-btn) > div[data-testid="stColumn"],
+div[data-testid="stHorizontalBlock"]:has(.nav-btn) > div[data-testid="stColumn"]:nth-child(2),
+div[data-testid="stHorizontalBlock"]:has(.nav-btn) > div[data-testid="stColumn"]:nth-child(3) {
+  background: transparent !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+  padding: 0 0.2rem !important;
+}
+</style>""", unsafe_allow_html=True)
+
+    _render_movie_analysis(selected_imdb_id, "_cached")
 
 
 if __name__ == "__main__":

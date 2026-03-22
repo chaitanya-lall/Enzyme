@@ -10,11 +10,27 @@ def _secret(key, default=""):
     except Exception:
         return default
 
+# Watchmode API — for Netflix/Max catalog discovery
+WATCHMODE_API_KEY = _secret("WATCHMODE_API_KEY")
+
 # OMDb API — reads from environment (Streamlit Cloud secrets) with local fallback
 OMDB_API_KEY      = _secret("OMDB_API_KEY")
 OMDB_API_KEY_2    = _secret("OMDB_API_KEY_2")
 OMDB_NOEL_KEY     = _secret("OMDB_NOEL_KEY")
 OMDB_APP_KEY      = _secret("OMDB_APP_KEY")
+OMDB_API_KEY_5    = _secret("OMDB_API_KEY_5")
+OMDB_API_KEY_6    = _secret("OMDB_API_KEY_6")
+
+# All search keys for the live website — OMDB_API_KEY_6 is reserved exclusively here
+# (never used by catalog_seed.py) to guarantee the site always has quota.
+OMDB_SEARCH_KEYS  = [k for k in [
+    _secret("OMDB_API_KEY_6"),   # reserved for website only
+    _secret("OMDB_API_KEY_5"),
+    _secret("OMDB_API_KEY"),
+    _secret("OMDB_APP_KEY"),
+    _secret("OMDB_API_KEY_2"),
+    _secret("OMDB_NOEL_KEY"),
+] if k]
 
 # AI narrative keys
 GEMINI_API_KEY    = _secret("GEMINI_API_KEY")
@@ -29,12 +45,14 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
 
-NUMBERS_FILE = "/Users/chaitanya.lall/Documents/Chai IMDb rankings.numbers"
+NUMBERS_FILE      = "/Users/chaitanya.lall/Documents/Chai IMDb rankings.numbers"
+CHAI_SEEN_FILE    = "/Users/chaitanya.lall/Documents/Chai Seen.numbers"
 RAW_CSV = os.path.join(DATA_DIR, "enriched_raw.csv")
 OMDB_CSV = os.path.join(DATA_DIR, "enriched_omdb.csv")
 
 # Noel's paths
 NOEL_NUMBERS_FILE = "/Users/chaitanya.lall/Documents/Noel's Ratings.numbers"
+NOEL_SEEN_FILE    = "/Users/chaitanya.lall/Documents/Noel Seen.numbers"
 NOEL_DATA_DIR    = os.path.join(BASE_DIR, "data",    "noel")
 NOEL_MODELS_DIR  = os.path.join(BASE_DIR, "models",  "noel")
 NOEL_OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs", "noel")
@@ -140,6 +158,7 @@ TAG_TAXONOMY = {
 }
 TAG_CSV           = os.path.join(DATA_DIR, "movie_tags.csv")
 PARENTS_GUIDE_CSV = os.path.join(DATA_DIR, "parents_guide.csv")
+CATALOG_PATH      = os.path.join(DATA_DIR, "catalog_data.parquet")
 
 # Parents Guide ordinal encoding (for ML features)
 PG_ORDINAL = {"None": 0, "Mild": 1, "Moderate": 2, "Severe": 3}

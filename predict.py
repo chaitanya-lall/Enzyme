@@ -19,7 +19,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import StandardScaler
 
 from config import (
-    OMDB_APP_KEY, OMDB_BASE_URL, OMDB_RATE_LIMIT_SLEEP,
+    OMDB_APP_KEY, OMDB_SEARCH_KEYS, OMDB_BASE_URL, OMDB_RATE_LIMIT_SLEEP,
     MODELS_DIR, DATA_DIR, SENTENCE_TRANSFORMER_MODEL,
     PG_ORDINAL, PG_COLS,
 )
@@ -239,13 +239,19 @@ def search_omdb(title: str) -> list[dict]:
     """Search OMDb for multiple matches, tolerating missing/extra punctuation and run-together words."""
 
     def _search(t):
-        try:
-            resp = requests.get(OMDB_BASE_URL, params={"s": t, "type": "movie", "apikey": OMDB_APP_KEY}, timeout=10)
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get("Search", []) if data.get("Response") != "False" else []
-        except Exception:
-            return []
+        for key in OMDB_SEARCH_KEYS:
+            try:
+                resp = requests.get(OMDB_BASE_URL, params={"s": t, "type": "movie", "apikey": key}, timeout=10)
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("Response") != "False":
+                    return data.get("Search", [])
+                if "limit" in data.get("Error", "").lower():
+                    continue  # try next key
+                return []
+            except Exception:
+                continue
+        return []
 
     def _merge(results: list, extra: list, seen: set) -> list:
         for r in extra:
@@ -274,28 +280,40 @@ def search_omdb(title: str) -> list[dict]:
 
 
 def fetch_by_imdb_id(imdb_id: str) -> dict | None:
-    """Fetch a movie from OMDb by IMDb ID."""
-    try:
-        resp = requests.get(OMDB_BASE_URL, params={"i": imdb_id, "plot": "full", "apikey": OMDB_APP_KEY}, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        return data if data.get("Response") != "False" else None
-    except Exception as e:
-        print(f"OMDb error: {e}")
-        return None
+    """Fetch a movie from OMDb by IMDb ID, rotating through all keys."""
+    for key in OMDB_SEARCH_KEYS:
+        try:
+            resp = requests.get(OMDB_BASE_URL, params={"i": imdb_id, "plot": "full", "apikey": key}, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("Response") != "False":
+                return data
+            if "limit" in data.get("Error", "").lower():
+                continue
+            return None
+        except Exception as e:
+            print(f"OMDb error (key rotation): {e}")
+            continue
+    return None
 
 
 def fetch_by_title(title: str) -> dict | None:
-    """Search OMDb by movie title. Returns raw OMDb JSON or None."""
+    """Search OMDb by movie title, rotating through all keys."""
     def _omdb_get(t):
-        try:
-            resp = requests.get(OMDB_BASE_URL, params={"t": t, "plot": "full", "apikey": OMDB_APP_KEY}, timeout=10)
-            resp.raise_for_status()
-            data = resp.json()
-            return data if data.get("Response") != "False" else None
-        except Exception as e:
-            print(f"OMDb error: {e}")
-            return None
+        for key in OMDB_SEARCH_KEYS:
+            try:
+                resp = requests.get(OMDB_BASE_URL, params={"t": t, "plot": "full", "apikey": key}, timeout=10)
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("Response") != "False":
+                    return data
+                if "limit" in data.get("Error", "").lower():
+                    continue
+                return None
+            except Exception as e:
+                print(f"OMDb error (key rotation): {e}")
+                continue
+        return None
 
     # 1. Try exact title
     result = _omdb_get(title)
