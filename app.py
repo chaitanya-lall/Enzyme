@@ -277,49 +277,28 @@ div[data-testid="stHorizontalBlock"]:has(.nav-btn) button {
 }
 
 /* ── Catalog cards ───────────────────────────────── */
-/* Column: flex column so Details button is always anchored to the bottom */
+/* Column: clip to card border-radius, no padding */
 div[data-testid="stColumn"]:has(.catalog-card) {
   padding: 0 !important;
   overflow: hidden !important;
   border-radius: 13px !important;
-  display: flex !important;
-  flex-direction: column !important;
 }
-/* stVerticalBlock inside card column: flex column, zero gap, full height */
-div[data-testid="stColumn"]:has(.catalog-card) > div[data-testid="stVerticalBlockBorderWrapper"],
-div[data-testid="stColumn"]:has(.catalog-card) > div {
-  flex: 1 !important;
-  display: flex !important;
-  flex-direction: column !important;
-}
+/* Zero out Streamlit's default ~1rem gap between the card HTML and the Details button */
 div[data-testid="stColumn"]:has(.catalog-card) [data-testid="stVerticalBlock"] {
-  flex: 1 !important;
-  display: flex !important;
-  flex-direction: column !important;
   gap: 0 !important;
 }
-/* Card HTML element stretches to fill space above the button */
-div[data-testid="stColumn"]:has(.catalog-card) [data-testid="stElementContainer"]:has(.catalog-card) {
-  flex: 1 !important;
-  display: flex !important;
-  flex-direction: column !important;
-}
-div[data-testid="stColumn"]:has(.catalog-card) [data-testid="stElementContainer"]:has(.catalog-card) > div {
-  flex: 1 !important;
-  display: flex !important;
-  flex-direction: column !important;
+/* Remove any residual margin/padding on the element containers */
+div[data-testid="stColumn"]:has(.catalog-card) [data-testid="stElementContainer"] {
+  margin: 0 !important;
+  padding: 0 !important;
 }
 .catalog-card {
   background: #13161f;
   border-radius: 13px;
   overflow: hidden;
-  flex: 1 !important;
-  display: flex !important;
-  flex-direction: column !important;
 }
 .catalog-card-body {
   padding: 0.6rem 0.7rem 0.5rem 0.7rem;
-  flex: 1;
 }
 .catalog-card-title {
   font-size: 0.82rem; font-weight: 700; color: #e2e8f0;
@@ -327,12 +306,8 @@ div[data-testid="stColumn"]:has(.catalog-card) [data-testid="stElementContainer"
   margin-bottom: 0.1rem;
 }
 .catalog-card-year { font-size: 0.72rem; color: #6b7280; margin-bottom: 0.3rem; }
-.catalog-card-scores { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0; }
-/* Details button inside a card column — flush, no gap */
-div[data-testid="stColumn"]:has(.catalog-card) [data-testid="stElementContainer"]:has(.stButton) {
-  margin-top: 0 !important;
-  padding-top: 0 !important;
-}
+.catalog-card-scores { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.1rem; }
+/* Details button — flush against the card, full width */
 div[data-testid="stColumn"]:has(.catalog-card) .stButton > button {
   width: 100%;
   background: #1a1f2e !important;
