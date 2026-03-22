@@ -295,6 +295,12 @@ div[data-testid="stColumn"]:has(.catalog-card) [data-testid="stElementContainer"
   margin: 0 !important;
   padding: 0 !important;
 }
+/* Streamlit injects margin-bottom:-16px on stMarkdownContainer, which makes the column
+   think the card is 16px shorter than it is → overflow:hidden clips the bottom 16px.
+   Zero it out so the column height correctly matches the card height. */
+div[data-testid="stColumn"]:has(.catalog-card) [data-testid="stMarkdownContainer"] {
+  margin-bottom: 0 !important;
+}
 .catalog-card {
   background: #13161f;
   border-radius: 13px;
