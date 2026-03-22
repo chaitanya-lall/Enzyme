@@ -1504,11 +1504,24 @@ def _ids_from_seen_numbers(path: str) -> set:
 
 
 def _load_catalog() -> "pd.DataFrame":
+    import json
     import pandas as pd
     df = pd.read_parquet(CATALOG_PATH)
-    # Annotate which movies each user has seen (from their Seen.numbers files)
-    chai_ids = _ids_from_seen_numbers(CHAI_SEEN_FILE)
-    noel_ids = _ids_from_seen_numbers(NOEL_SEEN_FILE)
+
+    # Load seen IDs: prefer local .numbers files (laptop), fall back to
+    # data/seen_ids.json (pushed to GitHub so production has the data).
+    _seen_json = os.path.join(_APP_DIR, "data", "seen_ids.json")
+    if os.path.exists(CHAI_SEEN_FILE) or os.path.exists(NOEL_SEEN_FILE):
+        chai_ids = _ids_from_seen_numbers(CHAI_SEEN_FILE)
+        noel_ids = _ids_from_seen_numbers(NOEL_SEEN_FILE)
+    elif os.path.exists(_seen_json):
+        with open(_seen_json) as _f:
+            _seen = json.load(_f)
+        chai_ids = set(_seen.get("chai_seen", []))
+        noel_ids = set(_seen.get("noel_seen", []))
+    else:
+        chai_ids, noel_ids = set(), set()
+
     df["chai_seen"] = df["imdb_id"].isin(chai_ids)
     df["noel_seen"] = df["imdb_id"].isin(noel_ids)
     return df
@@ -1699,14 +1712,21 @@ def render_recommend_tab() -> None:
         _imdb_val > 0, _yr_val != (1950, 2026),
     ])
     _mob_filter_lbl = f"Filter and Sort ({_mob_active_count} active) ▾" if _mob_active_count else "Filter and Sort ▾"
+    _mob_open = st.session_state.get("_mob_filters_open", False)
+    # Inject CSS to show/hide the panel — panel is ALWAYS rendered so its
+    # widget state is never lost by Streamlit on reruns (e.g. after Load More).
+    _panel_css = "block" if _mob_open else "none"
+    st.markdown(
+        f"<style>.st-key-mob-filter-panel {{ display: {_panel_css} !important; }}</style>",
+        unsafe_allow_html=True,
+    )
     with st.container(key="mob-filter-bar"):
-        _mob_open = st.session_state.get("_mob_filters_open", False)
         _mob_btn_lbl = (_mob_filter_lbl.rstrip("▾") + "▲") if _mob_open else _mob_filter_lbl
         if st.button(_mob_btn_lbl, key="f_mob_open", use_container_width=True):
             st.session_state["_mob_filters_open"] = not _mob_open
             st.rerun()
-        if st.session_state.get("_mob_filters_open", False):
-            _mobile_filters_panel()
+    # Always render the panel (CSS controls visibility so widget state persists)
+    _mobile_filters_panel()
     # Prefer mobile sort if user explicitly picked one, otherwise desktop value
     sort_by = st.session_state.get("f_sort_mob") or sort_by
 

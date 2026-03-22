@@ -24,9 +24,41 @@ SEED_EXIT=$?
 
 echo "=== $(date) — Seed exited ($SEED_EXIT) ===" >> "$LOG"
 
-# Git push — only the catalog parquet, nothing else
+# Regenerate seen_ids.json so production has up-to-date Chai/Noel seen lists
+"$PYTHON" - >> "$LOG" 2>&1 <<'PYEOF'
+import os, json, warnings, re
+
+CHAI_SEEN_FILE = os.path.expanduser("~/Documents/Chai Seen.numbers")
+NOEL_SEEN_FILE = os.path.expanduser("~/Documents/Noel Seen.numbers")
+
+def ids_from_numbers(path):
+    try:
+        import numbers_parser
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            doc = numbers_parser.Document(path)
+        rows = doc.sheets[0].tables[0].rows(values_only=True)
+        ids = set()
+        for row in rows:
+            for cell in row:
+                if isinstance(cell, str) and "imdb.com/title/" in cell:
+                    m = re.search(r"tt\d+", cell)
+                    if m:
+                        ids.add(m.group(0))
+        return sorted(ids)
+    except Exception as e:
+        print(f"Error reading {path}: {e}")
+        return []
+
+out = {"chai_seen": ids_from_numbers(CHAI_SEEN_FILE), "noel_seen": ids_from_numbers(NOEL_SEEN_FILE)}
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "seen_ids.json"), "w") as f:
+    json.dump(out, f)
+print(f"seen_ids.json written: chai={len(out['chai_seen'])}, noel={len(out['noel_seen'])}")
+PYEOF
+
+# Git push — catalog parquet + seen IDs JSON
 cd "$ENZYME_DIR" || exit 1
-git add data/catalog_data.parquet >> "$LOG" 2>&1
+git add data/catalog_data.parquet data/seen_ids.json >> "$LOG" 2>&1
 git commit -m "chore: daily catalog enrichment $(date +%Y-%m-%d)" >> "$LOG" 2>&1
 git push origin main >> "$LOG" 2>&1
 GIT_EXIT=$?
