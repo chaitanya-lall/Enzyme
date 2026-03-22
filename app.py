@@ -241,6 +241,10 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) 
 /* Mobile filter bar styles — single full-width "Filter and Sort" pill */
 .st-key-mob-filter-bar {
   padding: 0 0 0.8rem 0;
+  position: sticky;
+  top: 0;
+  z-index: 99;
+  background: #0a0b0f;
 }
 .st-key-mob-filter-bar button {
   border-radius: 20px !important;
@@ -254,6 +258,15 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) 
 .st-key-mob-filter-bar button p,
 .st-key-mob-filter-bar button div,
 .st-key-mob-filter-bar button span { color: #000000 !important; }
+
+/* Mobile inline filter panel */
+.st-key-mob-filter-panel {
+  background: #13161f;
+  border-radius: 12px;
+  padding: 1rem 1rem 0.5rem 1rem;
+  margin-bottom: 0.8rem;
+  border: 1px solid #2a2f3e;
+}
 
 
 /* ── Nav bar ─────────────────────────────────────── */
@@ -1306,46 +1319,11 @@ def catalog_movie_detail(imdb_id: str) -> None:
     _render_movie_analysis(imdb_id, pfx="_modal")
 
 
-@st.dialog("Filter and Sort", width="small")
-def _mobile_filters_dialog():
-    """Mobile-only full-screen filter+sort panel (uses f_mob_* keys to avoid ID conflicts)."""
-    # ── Sort — at the top ────────────────────────────────────────────────────
-    st.markdown("**Sort**")
-    st.selectbox(
-        "Sort by",
-        ["Compatibility", "Chai Score", "Noel Score", "IMDb Score", "Newest First"],
-        index=None,
-        placeholder="Compatibility (default)",
-        label_visibility="collapsed",
-        key="f_sort_mob",
-    )
-    st.divider()
-    # ── Filters ──────────────────────────────────────────────────────────────
-    st.markdown("**Services**")
-    st.checkbox("Netflix",    key="f_mob_svc_netflix")
-    st.checkbox("Max",        key="f_mob_svc_max")
-    st.checkbox("Disney+",    key="f_mob_svc_disney")
-    st.checkbox("Hulu",       key="f_mob_svc_hulu")
-    st.checkbox("Apple TV+",  key="f_mob_svc_apple")
-    st.checkbox("Peacock",    key="f_mob_svc_peacock")
-    st.checkbox("Paramount+", key="f_mob_svc_paramount")
-    st.divider()
-    st.markdown("**Content Type**")
-    st.checkbox("Movies",   key="f_mob_type_movies")
-    st.checkbox("TV Shows", key="f_mob_type_tv")
-    st.divider()
-    st.markdown("**Watch Status**")
-    st.checkbox("Chai Seen",     key="f_mob_w_chai_seen")
-    st.checkbox("Chai Not Seen", key="f_mob_w_chai_not_seen")
-    st.checkbox("Noel Seen",     key="f_mob_w_noel_seen")
-    st.checkbox("Noel Not Seen", key="f_mob_w_noel_not_seen")
-    st.divider()
-    st.markdown("**IMDb Score**")
-    st.slider("Min IMDb", 0.0, 10.0, value=0.0, step=0.5, format="%.1f", key="f_mob_imdb")
-    st.divider()
-    st.markdown("**Release Year**")
-    st.slider("Year", 1900, 2026, value=(1950, 2026), key="f_mob_yr")
-    st.divider()
+def _mobile_filters_panel():
+    """Mobile-only inline filter+sort panel (uses f_mob_* keys to avoid ID conflicts).
+    Rendered directly in page flow — no dialog/fragment isolation — so filter state
+    is reliably read by the catalog filter logic on the same rerun.
+    """
     _mob_keys = [
         "f_mob_svc_netflix", "f_mob_svc_max", "f_mob_svc_disney",
         "f_mob_svc_hulu", "f_mob_svc_apple", "f_mob_svc_peacock", "f_mob_svc_paramount",
@@ -1353,15 +1331,54 @@ def _mobile_filters_dialog():
         "f_mob_w_chai_seen", "f_mob_w_chai_not_seen", "f_mob_w_noel_seen", "f_mob_w_noel_not_seen",
         "f_mob_imdb", "f_mob_yr", "f_sort_mob",
     ]
-    cl, cr = st.columns(2)
-    with cl:
-        if st.button("Clear all", use_container_width=True):
-            for _k in _mob_keys:
-                st.session_state.pop(_k, None)
-            st.rerun()
-    with cr:
-        if st.button("Done", type="primary", use_container_width=True):
-            st.rerun()
+    with st.container(key="mob-filter-panel"):
+        # ── Sort — at the top ────────────────────────────────────────────────
+        st.markdown("**Sort**")
+        st.selectbox(
+            "Sort by",
+            ["Compatibility", "Chai Score", "Noel Score", "IMDb Score", "Newest First"],
+            index=None,
+            placeholder="Compatibility (default)",
+            label_visibility="collapsed",
+            key="f_sort_mob",
+        )
+        st.divider()
+        # ── Filters ──────────────────────────────────────────────────────────
+        st.markdown("**Services**")
+        st.checkbox("Netflix",    key="f_mob_svc_netflix")
+        st.checkbox("Max",        key="f_mob_svc_max")
+        st.checkbox("Disney+",    key="f_mob_svc_disney")
+        st.checkbox("Hulu",       key="f_mob_svc_hulu")
+        st.checkbox("Apple TV+",  key="f_mob_svc_apple")
+        st.checkbox("Peacock",    key="f_mob_svc_peacock")
+        st.checkbox("Paramount+", key="f_mob_svc_paramount")
+        st.divider()
+        st.markdown("**Content Type**")
+        st.checkbox("Movies",   key="f_mob_type_movies")
+        st.checkbox("TV Shows", key="f_mob_type_tv")
+        st.divider()
+        st.markdown("**Watch Status**")
+        st.checkbox("Chai Seen",     key="f_mob_w_chai_seen")
+        st.checkbox("Chai Not Seen", key="f_mob_w_chai_not_seen")
+        st.checkbox("Noel Seen",     key="f_mob_w_noel_seen")
+        st.checkbox("Noel Not Seen", key="f_mob_w_noel_not_seen")
+        st.divider()
+        st.markdown("**IMDb Score**")
+        st.slider("Min IMDb", 0.0, 10.0, value=0.0, step=0.5, format="%.1f", key="f_mob_imdb")
+        st.divider()
+        st.markdown("**Release Year**")
+        st.slider("Year", 1900, 2026, value=(1950, 2026), key="f_mob_yr")
+        st.divider()
+        cl, cr = st.columns(2)
+        with cl:
+            if st.button("Clear all", key="f_mob_clear", use_container_width=True):
+                for _k in _mob_keys:
+                    st.session_state.pop(_k, None)
+                st.rerun()
+        with cr:
+            if st.button("Close ▲", key="f_mob_close", type="primary", use_container_width=True):
+                st.session_state["_mob_filters_open"] = False
+                st.rerun()
 
 
 def _render_catalog_card(item) -> None:
@@ -1657,8 +1674,13 @@ def render_recommend_tab() -> None:
     ])
     _mob_filter_lbl = f"Filter and Sort ({_mob_active_count} active) ▾" if _mob_active_count else "Filter and Sort ▾"
     with st.container(key="mob-filter-bar"):
-        if st.button(_mob_filter_lbl, key="f_mob_open", use_container_width=True):
-            _mobile_filters_dialog()
+        _mob_open = st.session_state.get("_mob_filters_open", False)
+        _mob_btn_lbl = (_mob_filter_lbl.rstrip("▾") + "▲") if _mob_open else _mob_filter_lbl
+        if st.button(_mob_btn_lbl, key="f_mob_open", use_container_width=True):
+            st.session_state["_mob_filters_open"] = not _mob_open
+            st.rerun()
+        if st.session_state.get("_mob_filters_open", False):
+            _mobile_filters_panel()
     # Prefer mobile sort if user explicitly picked one, otherwise desktop value
     sort_by = st.session_state.get("f_sort_mob") or sort_by
 
@@ -1684,7 +1706,7 @@ def render_recommend_tab() -> None:
         if _masks:
             _combined = _masks[0]
             for _m in _masks[1:]:
-                _combined = _combined & _m
+                _combined = _combined | _m
             dff = dff[_combined]
     if _imdb_val > 0:
         dff = dff[dff["imdb_score"].notna() & (dff["imdb_score"] >= _imdb_val)]
