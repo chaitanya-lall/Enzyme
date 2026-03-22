@@ -229,6 +229,9 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) 
   .catalog-card-title { font-size: 0.73rem !important; }
   .catalog-card-year  { font-size: 0.65rem !important; }
   .catalog-card-scores span { font-size: 0.67rem !important; }
+  /* Hide Details button on mobile — card tap opens the dialog instead */
+  div[data-testid="stColumn"]:has(.catalog-card) .stButton { display: none !important; }
+  .catalog-card { cursor: pointer; }
 }
 
 /* ── Mobile filter bar: hidden on desktop ── */
@@ -1689,7 +1692,7 @@ def render_recommend_tab() -> None:
 
     # ── Grid (paginated — 16 items per page) ──────────────────────────────────
     # Reset page when filters change (use a hash of filter state as key)
-    _filter_key = f"{services}|{content_types}|{_watch_sel}|{min_imdb}|{year_range}|{sort_by}"
+    _filter_key = f"{services}|{content_types}|{_watch_sel}|{_imdb_val}|{_yr_val}|{sort_by}"
     if st.session_state.get("_catalog_filter_key") != _filter_key:
         st.session_state["_catalog_filter_key"] = _filter_key
         st.session_state["_catalog_visible"] = 8
@@ -1703,6 +1706,25 @@ def render_recommend_tab() -> None:
             unsafe_allow_html=True,
         )
     else:
+        # Inject once: make catalog-card taps fire the hidden Details button on mobile
+        _components.html("""<script>
+(function() {
+  if (parent.window._enzymeCardTap) return;
+  parent.window._enzymeCardTap = true;
+  function attach() {
+    parent.document.querySelectorAll('.catalog-card:not([data-tap])').forEach(function(card) {
+      card.setAttribute('data-tap', '1');
+      card.addEventListener('click', function() {
+        var col = card.closest('[data-testid="stColumn"]');
+        if (col) { var btn = col.querySelector('button'); if (btn) btn.click(); }
+      });
+    });
+  }
+  new MutationObserver(attach).observe(parent.document.body, {childList:true, subtree:true});
+  attach();
+})();
+</script>""", height=0)
+
         N = 4
         dff_reset = dff.reset_index(drop=True).iloc[:visible]
         for row_start in range(0, len(dff_reset), N):
