@@ -195,6 +195,70 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) 
     margin: 0 !important;
     padding: 0 !important;
   }
+  /* ── Header compaction: tighten nav element spacing by ~50% ── */
+  div[data-testid="stHorizontalBlock"]:has(.nav-btn) {
+    margin-bottom: -0.4rem !important;
+  }
+  div[data-testid="stHorizontalBlock"]:has(.nav-btn) button {
+    margin-top: 0.3rem !important;
+  }
+  /* ── Hide desktop filter bar; show mobile bar ── */
+  .st-key-filter-bar { display: none !important; }
+  /* ── Catalog grid: 2 cards per row in portrait ── */
+  div[data-testid="stHorizontalBlock"]:has(.catalog-card) {
+    flex-wrap: wrap !important;
+    gap: 0.4rem !important;
+  }
+  div[data-testid="stHorizontalBlock"]:has(.catalog-card) > div[data-testid="stColumn"] {
+    width: calc(50% - 0.2rem) !important;
+    flex: 0 0 calc(50% - 0.2rem) !important;
+    min-width: 0 !important;
+  }
+  /* Scale down card text in 2-up layout */
+  .catalog-card-title { font-size: 0.73rem !important; }
+  .catalog-card-year  { font-size: 0.65rem !important; }
+  .catalog-card-scores span { font-size: 0.67rem !important; }
+}
+
+/* ── Mobile filter bar: hidden on desktop ── */
+@media (min-width: 769px) {
+  .st-key-mob-filter-bar { display: none !important; }
+}
+/* Mobile filter bar styles */
+.st-key-mob-filter-bar {
+  padding: 0 0 0.8rem 0;
+}
+.st-key-mob-filter-bar div[data-testid="stHorizontalBlock"] {
+  gap: 0.5rem !important;
+  align-items: center !important;
+}
+.st-key-mob-filter-bar [data-testid="stColumn"] {
+  padding: 0 !important;
+}
+.st-key-mob-filter-bar div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) {
+  padding: 0 !important;
+}
+.st-key-mob-filter-bar button {
+  border-radius: 20px !important;
+  font-size: 0.84rem !important;
+  font-weight: 500 !important;
+  height: 2.2rem !important;
+  background: #ffffff !important;
+  border: 1px solid #d1d5db !important;
+  width: 100% !important;
+}
+.st-key-mob-filter-bar button p,
+.st-key-mob-filter-bar button div,
+.st-key-mob-filter-bar button span { color: #000000 !important; }
+.st-key-mob-filter-bar [data-testid="stSelectbox"] > div > div {
+  background: #ffffff !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 20px !important;
+  font-size: 0.84rem !important;
+  font-weight: 500 !important;
+  min-height: 2.2rem !important;
+  color: #000000 !important;
+  padding: 0 0.5rem 0 0.9rem !important;
 }
 
 
@@ -1225,6 +1289,52 @@ def catalog_movie_detail(imdb_id: str) -> None:
     _render_movie_analysis(imdb_id, pfx="_modal")
 
 
+@st.dialog("Filters", width="small")
+def _mobile_filters_dialog():
+    """Mobile-only full-screen filters panel (uses f_mob_* keys to avoid widget ID conflicts)."""
+    st.markdown("**Services**")
+    st.checkbox("Netflix",    key="f_mob_svc_netflix")
+    st.checkbox("Max",        key="f_mob_svc_max")
+    st.checkbox("Disney+",    key="f_mob_svc_disney")
+    st.checkbox("Hulu",       key="f_mob_svc_hulu")
+    st.checkbox("Apple TV+",  key="f_mob_svc_apple")
+    st.checkbox("Peacock",    key="f_mob_svc_peacock")
+    st.checkbox("Paramount+", key="f_mob_svc_paramount")
+    st.divider()
+    st.markdown("**Content Type**")
+    st.checkbox("Movies",   key="f_mob_type_movies")
+    st.checkbox("TV Shows", key="f_mob_type_tv")
+    st.divider()
+    st.markdown("**Watch Status**")
+    st.checkbox("Chai Seen",     key="f_mob_w_chai_seen")
+    st.checkbox("Chai Not Seen", key="f_mob_w_chai_not_seen")
+    st.checkbox("Noel Seen",     key="f_mob_w_noel_seen")
+    st.checkbox("Noel Not Seen", key="f_mob_w_noel_not_seen")
+    st.divider()
+    st.markdown("**IMDb Score**")
+    st.slider("Min IMDb", 0.0, 10.0, value=0.0, step=0.5, format="%.1f", key="f_mob_imdb")
+    st.divider()
+    st.markdown("**Release Year**")
+    st.slider("Year", 1900, 2026, value=(1950, 2026), key="f_mob_yr")
+    st.divider()
+    _mob_keys = [
+        "f_mob_svc_netflix", "f_mob_svc_max", "f_mob_svc_disney",
+        "f_mob_svc_hulu", "f_mob_svc_apple", "f_mob_svc_peacock", "f_mob_svc_paramount",
+        "f_mob_type_movies", "f_mob_type_tv",
+        "f_mob_w_chai_seen", "f_mob_w_chai_not_seen", "f_mob_w_noel_seen", "f_mob_w_noel_not_seen",
+        "f_mob_imdb", "f_mob_yr",
+    ]
+    cl, cr = st.columns(2)
+    with cl:
+        if st.button("Clear all", use_container_width=True):
+            for _k in _mob_keys:
+                st.session_state.pop(_k, None)
+            st.rerun()
+    with cr:
+        if st.button("Done", type="primary", use_container_width=True):
+            st.rerun()
+
+
 def _render_catalog_card(item) -> None:
     """Render one catalog card (HTML + a Details button)."""
     poster_url = str(item.get("poster_url") or "")
@@ -1370,21 +1480,25 @@ def render_recommend_tab() -> None:
     df = _load_catalog()
 
     # ── Filter bar ────────────────────────────────────────────────────────────
-    _svc_netflix      = st.session_state.get("f_svc_netflix",  False)
-    _svc_max          = st.session_state.get("f_svc_max",      False)
-    _svc_disney       = st.session_state.get("f_svc_disney",   False)
-    _svc_hulu         = st.session_state.get("f_svc_hulu",     False)
-    _svc_apple        = st.session_state.get("f_svc_apple",    False)
-    _svc_peacock      = st.session_state.get("f_svc_peacock",  False)
-    _svc_paramount    = st.session_state.get("f_svc_paramount",False)
-    _type_movies      = st.session_state.get("f_type_movies",  False)
-    _type_tv          = st.session_state.get("f_type_tv",      False)
-    _w_chai_seen      = st.session_state.get("f_w_chai_seen",      False)
-    _w_chai_not_seen  = st.session_state.get("f_w_chai_not_seen",  False)
-    _w_noel_seen      = st.session_state.get("f_w_noel_seen",      False)
-    _w_noel_not_seen  = st.session_state.get("f_w_noel_not_seen",  False)
-    _imdb_val         = float(st.session_state.get("f_imdb", 0.0))
-    _yr_val           = st.session_state.get("f_yr", (1950, 2026))
+    # Each filter ORs the desktop key with the mobile-dialog key so both UIs work
+    _svc_netflix   = st.session_state.get("f_svc_netflix",  False) or st.session_state.get("f_mob_svc_netflix",  False)
+    _svc_max       = st.session_state.get("f_svc_max",      False) or st.session_state.get("f_mob_svc_max",      False)
+    _svc_disney    = st.session_state.get("f_svc_disney",   False) or st.session_state.get("f_mob_svc_disney",   False)
+    _svc_hulu      = st.session_state.get("f_svc_hulu",     False) or st.session_state.get("f_mob_svc_hulu",     False)
+    _svc_apple     = st.session_state.get("f_svc_apple",    False) or st.session_state.get("f_mob_svc_apple",    False)
+    _svc_peacock   = st.session_state.get("f_svc_peacock",  False) or st.session_state.get("f_mob_svc_peacock",  False)
+    _svc_paramount = st.session_state.get("f_svc_paramount",False) or st.session_state.get("f_mob_svc_paramount",False)
+    _type_movies   = st.session_state.get("f_type_movies",  False) or st.session_state.get("f_mob_type_movies",  False)
+    _type_tv       = st.session_state.get("f_type_tv",      False) or st.session_state.get("f_mob_type_tv",      False)
+    _w_chai_seen     = st.session_state.get("f_w_chai_seen",     False) or st.session_state.get("f_mob_w_chai_seen",     False)
+    _w_chai_not_seen = st.session_state.get("f_w_chai_not_seen", False) or st.session_state.get("f_mob_w_chai_not_seen", False)
+    _w_noel_seen     = st.session_state.get("f_w_noel_seen",     False) or st.session_state.get("f_mob_w_noel_seen",     False)
+    _w_noel_not_seen = st.session_state.get("f_w_noel_not_seen", False) or st.session_state.get("f_mob_w_noel_not_seen", False)
+    # Take the more restrictive value from desktop/mobile for range filters
+    _imdb_val = max(float(st.session_state.get("f_imdb", 0.0)), float(st.session_state.get("f_mob_imdb", 0.0)))
+    _yr_desk  = st.session_state.get("f_yr",     (1950, 2026))
+    _yr_mob   = st.session_state.get("f_mob_yr", (1950, 2026))
+    _yr_val   = (max(_yr_desk[0], _yr_mob[0]), min(_yr_desk[1], _yr_mob[1]))
 
     # Map display name → catalog service key
     _SVC_MAP = {
@@ -1483,11 +1597,18 @@ def render_recommend_tab() -> None:
             st.markdown("<div class='filter-sep'>|</div>", unsafe_allow_html=True)
         with fc_clr:
             if st.button("Clear all", key="f_clear", disabled=not _any_active):
-                for _k in ["f_svc_netflix", "f_svc_max", "f_svc_disney",
-                            "f_svc_hulu", "f_svc_apple", "f_svc_peacock", "f_svc_paramount",
-                            "f_type_movies", "f_type_tv",
-                            "f_w_chai_seen", "f_w_chai_not_seen", "f_w_noel_seen", "f_w_noel_not_seen",
-                            "f_imdb", "f_yr"]:
+                for _k in [
+                    "f_svc_netflix", "f_svc_max", "f_svc_disney",
+                    "f_svc_hulu", "f_svc_apple", "f_svc_peacock", "f_svc_paramount",
+                    "f_type_movies", "f_type_tv",
+                    "f_w_chai_seen", "f_w_chai_not_seen", "f_w_noel_seen", "f_w_noel_not_seen",
+                    "f_imdb", "f_yr",
+                    "f_mob_svc_netflix", "f_mob_svc_max", "f_mob_svc_disney",
+                    "f_mob_svc_hulu", "f_mob_svc_apple", "f_mob_svc_peacock", "f_mob_svc_paramount",
+                    "f_mob_type_movies", "f_mob_type_tv",
+                    "f_mob_w_chai_seen", "f_mob_w_chai_not_seen", "f_mob_w_noel_seen", "f_mob_w_noel_not_seen",
+                    "f_mob_imdb", "f_mob_yr", "f_sort_mob",
+                ]:
                     st.session_state.pop(_k, None)
                 st.rerun()
         with fc_srt:
@@ -1497,6 +1618,31 @@ def render_recommend_tab() -> None:
                 format_func=lambda x: f"Sort: {x}",
                 label_visibility="collapsed", key="f_sort",
             )
+
+    # ── Mobile filter bar (CSS-hidden on desktop ≥769px) ──────────────────────
+    _mob_active_count = sum([
+        _svc_netflix, _svc_max, _svc_disney, _svc_hulu, _svc_apple, _svc_peacock, _svc_paramount,
+        _type_movies, _type_tv,
+        _w_chai_seen, _w_chai_not_seen, _w_noel_seen, _w_noel_not_seen,
+        _imdb_val > 0, _yr_val != (1950, 2026),
+    ])
+    _mob_filter_lbl = f"Filters ({_mob_active_count}) ▾" if _mob_active_count else "Filters ▾"
+    with st.container(key="mob-filter-bar"):
+        mc1, mc2 = st.columns([1, 1])
+        with mc1:
+            if st.button(_mob_filter_lbl, key="f_mob_open", use_container_width=True):
+                _mobile_filters_dialog()
+        with mc2:
+            _mob_sort_val = st.selectbox(
+                "Sort",
+                ["Compatibility", "Chai Score", "Noel Score", "IMDb Score", "Newest First"],
+                index=None,
+                placeholder="Sort: Compatibility",
+                label_visibility="collapsed",
+                key="f_sort_mob",
+            )
+    # Prefer mobile sort if user explicitly picked one, otherwise desktop value
+    sort_by = st.session_state.get("f_sort_mob") or sort_by
 
     # ── Apply filters ─────────────────────────────────────────────────────────
     dff = df.copy()
@@ -1522,9 +1668,9 @@ def render_recommend_tab() -> None:
             for _m in _masks[1:]:
                 _combined = _combined & _m
             dff = dff[_combined]
-    if min_imdb > 0:
-        dff = dff[dff["imdb_score"].notna() & (dff["imdb_score"] >= min_imdb)]
-    year_from, year_to = year_range
+    if _imdb_val > 0:
+        dff = dff[dff["imdb_score"].notna() & (dff["imdb_score"] >= _imdb_val)]
+    year_from, year_to = _yr_val
     if "year" in dff.columns:
         dff = dff[dff["year"].notna() & (dff["year"] >= year_from) & (dff["year"] <= year_to)]
 
