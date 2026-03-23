@@ -553,18 +553,23 @@ def run_seed(limit_per_service: int = 0,
         except Exception as e:
             log.warning(f"Could not load existing catalog: {e}")
 
-    # 4. Fetch OMDb metadata for: new titles + existing titles missing extended fields
-    log.info("Fetching OMDb metadata for new titles…")
+    # 4. Fetch OMDb metadata for: existing titles missing extended fields FIRST,
+    #    then brand-new titles.  This ensures the quota is spent completing the
+    #    existing catalog before discovering new movies.
+    log.info("Fetching OMDb metadata…")
     titles_with_imdb = [t for t in all_titles if t.get("imdb_id")]
-    titles_needing_omdb = [
-        t for t in titles_with_imdb
-        if t["imdb_id"] not in existing_omdb or t["imdb_id"] in needs_refetch
-    ]
+
+    existing_refetch = [t for t in titles_with_imdb if t["imdb_id"] in needs_refetch]
+    new_titles       = [t for t in titles_with_imdb if t["imdb_id"] not in existing_omdb]
+    titles_needing_omdb = existing_refetch + new_titles   # existing first, new second
+
     omdb_results: dict[str, dict] = {
         iid: v for iid, v in existing_omdb.items() if iid not in needs_refetch
     }
 
-    log.info(f"  {len(existing_omdb)} reused from cache, {len(titles_needing_omdb)} need fresh OMDb fetch")
+    log.info(f"  {len(omdb_results)} reused from cache, "
+             f"{len(existing_refetch)} existing need extended-field re-fetch, "
+             f"{len(new_titles)} brand-new titles")
 
     _quota_exhausted = False
 
