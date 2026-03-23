@@ -257,13 +257,15 @@ def fetch_omdb_metadata(imdb_id: str) -> dict | None:
 # ── Vectorized feature building ───────────────────────────────────────────────
 
 def _build_features_catalog(rec: dict, artifacts: dict,
-                              embedding: np.ndarray) -> pd.DataFrame:
+                              embedding: np.ndarray,
+                              tags_encoded: dict | None = None,
+                              pg_ratings: dict | None = None) -> pd.DataFrame:
     """
     Build one feature row for the catalog.
-    Mirrors _build_single_features from predict.py but:
-      - Uses a pre-computed embedding (for batching)
-      - No LLM tags (all zeros)
-      - No Parents Guide (all -1)
+    Mirrors _build_single_features from predict.py but uses a pre-computed
+    embedding (for batching). Tags and PG ratings are passed in from cached
+    CSVs so scores match the Search tab's prediction logic exactly.
+    Falls back to zeros/(-1) for movies with no cached data.
     """
     scaler        = artifacts["scaler"]
     mlb           = artifacts["mlb"]
@@ -357,9 +359,20 @@ def _build_features_catalog(rec: dict, artifacts: dict,
         genre_arr = np.zeros((1, len(mlb.classes_)))
     genre_feat = pd.DataFrame(genre_arr, columns=[f"genre_{c}" for c in mlb.classes_])
 
-    # 8. Tags (all zero) + PG (all -1)
-    tag_feat = pd.DataFrame([{col: 0 for col in ALL_TAG_COLS}])
-    pg_feat  = pd.DataFrame([{col: -1 for col in PG_COLS}])
+    # 8. Tags — use cached values if available, else zeros (same as Search tab)
+    if tags_encoded:
+        tag_row = {col: int(tags_encoded.get(col, 0)) for col in ALL_TAG_COLS}
+    else:
+        tag_row = {col: 0 for col in ALL_TAG_COLS}
+    tag_feat = pd.DataFrame([tag_row])
+
+    # 9a. Parents Guide — use cached values if available, else -1 (same as Search tab)
+    if pg_ratings:
+        pg_row = {f"pg_{k}": PG_ORDINAL.get(v, -1) if v else -1
+                  for k, v in pg_ratings.items()}
+    else:
+        pg_row = {col: -1 for col in PG_COLS}
+    pg_feat = pd.DataFrame([pg_row])
 
     # 9. Pre-computed embedding
     plot_feat = pd.DataFrame(
@@ -377,30 +390,77 @@ def score_catalog_batch(recs: list[dict],
                          chai_arts: dict,
                          noel_arts: dict) -> tuple[list[float], list[float]]:
     """
-    Score all recs vectorized.
-    1. Batch-encode all plots with SentenceTransformer.
-    2. Build feature matrix for Chai + Noel.
-    3. model.predict() once each.
-    Returns (chai_pcts, noel_pcts).
+    Score all recs vectorized using the same feature pipeline as the Search tab.
+    LLM tags and Parents Guide data are loaded from the cached CSVs
+    (data/movie_tags.csv and data/parents_guide.csv) so predictions are
+    identical to what predict_movie() would return for the same movie.
+    Falls back to zeros/-1 for movies not yet in the cache.
     """
+    from tag_features import encode_tags, ALL_TAG_COLS
+
+    # Load LLM tag cache keyed by IMDb ID
+    tags_lookup: dict[str, dict] = {}
+    _tags_csv = os.path.join(DATA_DIR, "movie_tags.csv")
+    if os.path.exists(_tags_csv):
+        _tags_df = pd.read_csv(_tags_csv)
+        _tag_cols = [c for c in _tags_df.columns if c.startswith("tag_")]
+        for _, row in _tags_df.iterrows():
+            iid = str(row.get("Const", "")).strip()
+            if iid:
+                tags_lookup[iid] = {c: int(row[c]) for c in _tag_cols if c in row}
+        log.info(f"Loaded LLM tags for {len(tags_lookup)} movies from cache")
+
+    # Load Parents Guide cache keyed by IMDb ID
+    pg_lookup: dict[str, dict] = {}
+    _pg_csv = os.path.join(DATA_DIR, "parents_guide.csv")
+    if os.path.exists(_pg_csv):
+        _pg_df = pd.read_csv(_pg_csv)
+        for _, row in _pg_df.iterrows():
+            iid = str(row.get("Const", "")).strip()
+            if iid:
+                pg_lookup[iid] = {
+                    "sex_nudity":    row.get("sex_nudity"),
+                    "violence_gore": row.get("violence_gore"),
+                    "profanity":     row.get("profanity"),
+                    "alcohol_drugs": row.get("alcohol_drugs"),
+                    "intensity":     row.get("intensity"),
+                }
+        log.info(f"Loaded Parents Guide for {len(pg_lookup)} movies from cache")
+
     log.info(f"Batch-encoding {len(recs)} plots with SentenceTransformer…")
     nlp = chai_arts["nlp"]
     texts = [_build_enriched_text(r) for r in recs]
     embeddings = nlp.encode(texts, batch_size=64, show_progress_bar=True)
 
     log.info("Building Chai feature matrix…")
-    chai_rows = [_build_features_catalog(r, chai_arts, embeddings[i])
-                 for i, r in enumerate(recs)]
+    chai_rows = [
+        _build_features_catalog(
+            r, chai_arts, embeddings[i],
+            tags_encoded=tags_lookup.get(r.get("imdb_id", ""), None),
+            pg_ratings=pg_lookup.get(r.get("imdb_id", ""), None),
+        )
+        for i, r in enumerate(recs)
+    ]
     chai_matrix = pd.concat(chai_rows, ignore_index=True)
     chai_preds = np.clip(chai_arts["model"].predict(chai_matrix), 1, 10)
     chai_pcts  = [round(float(p) / 10 * 100, 1) for p in chai_preds]
 
     log.info("Building Noel feature matrix…")
-    noel_rows = [_build_features_catalog(r, noel_arts, embeddings[i])
-                 for i, r in enumerate(recs)]
+    noel_rows = [
+        _build_features_catalog(
+            r, noel_arts, embeddings[i],
+            tags_encoded=tags_lookup.get(r.get("imdb_id", ""), None),
+            pg_ratings=pg_lookup.get(r.get("imdb_id", ""), None),
+        )
+        for i, r in enumerate(recs)
+    ]
     noel_matrix = pd.concat(noel_rows, ignore_index=True)
     noel_preds  = np.clip(noel_arts["model"].predict(noel_matrix), 1, 10)
     noel_pcts   = [round(float(p) / 10 * 100, 1) for p in noel_preds]
+
+    tagged   = sum(1 for r in recs if r.get("imdb_id", "") in tags_lookup)
+    pg_found = sum(1 for r in recs if r.get("imdb_id", "") in pg_lookup)
+    log.info(f"Tags applied: {tagged}/{len(recs)} | PG applied: {pg_found}/{len(recs)}")
 
     return chai_pcts, noel_pcts
 
