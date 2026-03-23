@@ -969,12 +969,6 @@ def _render_catalog_card(item) -> None:
     noel_pct   = float(item.get("noel_pct") or 0)
     service    = str(item.get("service") or "").lower()
 
-    def _sc(pct: float) -> str:
-        if pct >= 90:   return "#FFD700"
-        elif pct >= 70: return "#4f8ef7"
-        elif pct >= 50: return "#708090"
-        else:           return "#555555"
-
     # padding-bottom trick: enforces 2:3 ratio in all browsers regardless of image natural size
     _poster_wrap = "position:relative; width:100%; padding-bottom:150%; overflow:hidden;"
     _poster_inner = "position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; display:block;"
@@ -1018,8 +1012,8 @@ def _render_catalog_card(item) -> None:
     <div class='catalog-card-title' title='{title_esc}'>{title}</div>
     <div class='catalog-card-year'>{year_str}</div>
     <div class='catalog-card-scores'>
-      <span style='font-size:0.75rem; font-weight:700; color:{_sc(chai_pct)};'>Chai {chai_pct:.0f}%</span>
-      <span style='font-size:0.75rem; font-weight:700; color:{_sc(noel_pct)};'>Noel {noel_pct:.0f}%</span>
+      <span style='font-size:0.75rem; font-weight:700; color:{score_color(chai_pct)};'>Chai {f"{chai_pct:.1f}%" if chai_pct % 1 != 0 else f"{int(chai_pct)}%"}</span>
+      <span style='font-size:0.75rem; font-weight:700; color:{score_color(noel_pct)};'>Noel {f"{noel_pct:.1f}%" if noel_pct % 1 != 0 else f"{int(noel_pct)}%"}</span>
     </div>
   </div>
 </div>
