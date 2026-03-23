@@ -508,39 +508,61 @@ def run_seed(limit_per_service: int = 0,
 
     log.info(f"Total unique titles to score: {len(all_titles)}")
 
-    # 3. Load existing catalog to reuse already-fetched OMDb data
+    # 3. Load existing catalog to reuse already-fetched OMDb data.
+    #    All 10 NUMERIC_COLS must be present in the cache dict so predictions
+    #    match the Search tab exactly.  Movies missing the extended fields
+    #    (box_office, imdb_votes, rt_score, awards) are marked for re-fetch.
     existing_omdb: dict[str, dict] = {}
+    needs_refetch: set[str] = set()   # IMDb IDs missing extended fields
     if os.path.exists(CATALOG_PATH):
         try:
             existing_df = pd.read_parquet(CATALOG_PATH)
             for _, row in existing_df.iterrows():
                 iid = row.get("imdb_id", "")
-                if iid:
-                    existing_omdb[iid] = {
-                        "Title":      row.get("title", ""),
-                        "Year":       str(row.get("year", "")),
-                        "Type":       "series" if row.get("type") == "tv" else "movie",
-                        "imdbRating": row.get("imdb_score"),
-                        "Metascore":  row.get("metascore"),
-                        "Poster":     row.get("poster_url", ""),
-                        "Plot":       row.get("plot", ""),
-                        "Director":   row.get("director", ""),
-                        "Actors":     row.get("actors", ""),
-                        "Genre":      row.get("genre", ""),
-                        "Runtime":    str(row.get("runtime", "")),
-                        "Rated":      row.get("rated", ""),
-                        "Language":   row.get("language", ""),
-                        "Country":    row.get("country", ""),
-                    }
-            log.info(f"Loaded {len(existing_omdb)} existing catalog entries (skipping OMDb re-fetch)")
+                if not iid:
+                    continue
+                existing_omdb[iid] = {
+                    "Title":      row.get("title", ""),
+                    "Year":       str(row.get("year", "")),
+                    "Type":       "series" if row.get("type") == "tv" else "movie",
+                    "imdbRating": row.get("imdb_score"),
+                    "Metascore":  row.get("metascore"),
+                    "Poster":     row.get("poster_url", ""),
+                    "Plot":       row.get("plot", ""),
+                    "Director":   row.get("director", ""),
+                    "Actors":     row.get("actors", ""),
+                    "Genre":      row.get("genre", ""),
+                    "Runtime":    str(row.get("runtime", "")),
+                    "Rated":      row.get("rated", ""),
+                    "Language":   row.get("language", ""),
+                    "Country":    row.get("country", ""),
+                    # Extended fields — populated only after a full OMDb fetch
+                    "BoxOffice":  row.get("box_office"),
+                    "imdbVotes":  row.get("imdb_votes"),
+                    "RT_score":   row.get("rt_score"),
+                    "award_wins": row.get("award_wins"),
+                    "award_noms": row.get("award_noms"),
+                    "oscar_win":  row.get("oscar_win"),
+                    "oscar_nom":  row.get("oscar_nom"),
+                }
+                # Flag for re-fetch if any extended field is missing
+                if row.get("box_office") is None:
+                    needs_refetch.add(iid)
+            log.info(f"Loaded {len(existing_omdb)} existing catalog entries "
+                     f"({len(needs_refetch)} need extended-field re-fetch)")
         except Exception as e:
             log.warning(f"Could not load existing catalog: {e}")
 
-    # 4. Fetch OMDb metadata only for NEW titles not in existing catalog
+    # 4. Fetch OMDb metadata for: new titles + existing titles missing extended fields
     log.info("Fetching OMDb metadata for new titles…")
     titles_with_imdb = [t for t in all_titles if t.get("imdb_id")]
-    titles_needing_omdb = [t for t in titles_with_imdb if t["imdb_id"] not in existing_omdb]
-    omdb_results: dict[str, dict] = dict(existing_omdb)  # seed with existing
+    titles_needing_omdb = [
+        t for t in titles_with_imdb
+        if t["imdb_id"] not in existing_omdb or t["imdb_id"] in needs_refetch
+    ]
+    omdb_results: dict[str, dict] = {
+        iid: v for iid, v in existing_omdb.items() if iid not in needs_refetch
+    }
 
     log.info(f"  {len(existing_omdb)} reused from cache, {len(titles_needing_omdb)} need fresh OMDb fetch")
 
@@ -657,6 +679,14 @@ def run_seed(limit_per_service: int = 0,
             "metascore":     rec.get("Metascore"),
             "language":      rec.get("Language") or "",
             "country":       rec.get("Country")  or "",
+            # Extended OMDb fields — stored so future seed runs don't need to re-fetch
+            "box_office":    rec.get("BoxOffice"),
+            "imdb_votes":    rec.get("imdbVotes"),
+            "rt_score":      rec.get("RT_score"),
+            "award_wins":    rec.get("award_wins"),
+            "award_noms":    rec.get("award_noms"),
+            "oscar_win":     rec.get("oscar_win"),
+            "oscar_nom":     rec.get("oscar_nom"),
             "last_updated":  datetime.now().isoformat(),
         })
 
