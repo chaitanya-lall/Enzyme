@@ -108,16 +108,16 @@ def render_recommend_tab() -> None:
     _noel_watch_sel = [w for w, v in [("Noel Seen", _w_noel_seen), ("Noel Not Seen", _w_noel_not_seen)] if v]
 
     _chai_watch_lbl = (
-        "💖 Both"   if (_w_chai_seen and _w_chai_not_seen)
-        else ("💖 Seen"   if _w_chai_seen
-        else ("💖 Unseen" if _w_chai_not_seen
-        else  "💖 Chai"))
+        "Chai: Both"   if (_w_chai_seen and _w_chai_not_seen)
+        else ("Chai: Seen"   if _w_chai_seen
+        else ("Chai: Unseen" if _w_chai_not_seen
+        else  "Chai"))
     )
     _noel_watch_lbl = (
-        "👔 Both"   if (_w_noel_seen and _w_noel_not_seen)
-        else ("👔 Seen"   if _w_noel_seen
-        else ("👔 Unseen" if _w_noel_not_seen
-        else  "👔 Noel"))
+        "Noel: Both"   if (_w_noel_seen and _w_noel_not_seen)
+        else ("Noel: Seen"   if _w_noel_seen
+        else ("Noel: Unseen" if _w_noel_not_seen
+        else  "Noel"))
     )
     _imdb_lbl = f"IMDb ≥ {_imdb_val:.1f}" if _imdb_val > 0 else "IMDb Score"
     _yr_lbl   = f"{_yr_val[0]}–{_yr_val[1]}" if _yr_val != (1950, 2026) else "Year"
