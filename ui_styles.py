@@ -234,26 +234,58 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) 
     z-index: 1000 !important;
     background: #13161f !important;
     overflow-y: auto !important;
-    padding: 0.75rem 1rem 2.5rem 1rem !important;
+    padding: 0.9rem 1rem 2.5rem 1rem !important;
     margin: 0 !important;
     border-radius: 0 !important;
     border: none !important;
-    /* Darken everything behind it */
     box-shadow: 0 0 0 200vw rgba(0,0,0,0.75) !important;
   }
-  /* Halve the vertical flex gap between all elements in the panel */
+  /* Comfortable gap between panel elements */
   .st-key-mob-filter-panel [data-testid="stVerticalBlock"] {
-    gap: 0.5rem !important;
+    gap: 0.6rem !important;
   }
-  /* Halve divider margins */
-  .st-key-mob-filter-panel hr {
-    margin-top: 0.25rem !important;
-    margin-bottom: 0.25rem !important;
+  /* X close button — small circle, top-right of the title row */
+  .st-key-mob-filter-panel .st-key-f-mob-close button {
+    background: transparent !important;
+    border: 1px solid #374151 !important;
+    border-radius: 50% !important;
+    color: #9ca3af !important;
+    font-size: 0.9rem !important;
+    height: 2rem !important;
+    width: 2rem !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
-  /* Halve the stElementContainer padding that Streamlit adds around each widget */
-  .st-key-mob-filter-panel [data-testid="stElementContainer"] {
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
+  .st-key-mob-filter-panel .st-key-f-mob-close button:hover {
+    border-color: #6b7280 !important;
+    color: #e2e8f0 !important;
+  }
+  /* Expander rows — dark card style */
+  .st-key-mob-filter-panel details {
+    background: #1e2536 !important;
+    border: 1px solid #2d3748 !important;
+    border-radius: 10px !important;
+    padding: 0.1rem 0.75rem !important;
+  }
+  .st-key-mob-filter-panel details summary {
+    color: #e2e8f0 !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+    padding: 0.55rem 0 !important;
+    cursor: pointer !important;
+  }
+  .st-key-mob-filter-panel details svg {
+    fill: #9ca3af !important;
+  }
+  /* Content inside open expanders */
+  .st-key-mob-filter-panel [data-testid="stExpanderDetails"] {
+    padding: 0.25rem 0 0.4rem 0 !important;
+  }
+  .st-key-mob-filter-panel [data-testid="stExpanderDetails"] [data-testid="stVerticalBlock"] {
+    gap: 0.35rem !important;
   }
 }
 

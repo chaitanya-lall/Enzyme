@@ -906,76 +906,61 @@ def _mobile_filters_panel():
     Rendered directly in page flow — no dialog/fragment isolation — so filter state
     is reliably read by the catalog filter logic on the same rerun.
     """
-    _mob_keys = [
-        "f_mob_svc_netflix", "f_mob_svc_max", "f_mob_svc_disney",
-        "f_mob_svc_hulu", "f_mob_svc_apple", "f_mob_svc_peacock", "f_mob_svc_paramount",
-        "f_mob_type_movies", "f_mob_type_tv",
-        "f_mob_w_chai_seen", "f_mob_w_chai_not_seen", "f_mob_w_noel_seen", "f_mob_w_noel_not_seen",
-        "f_mob_imdb", "f_mob_yr", "f_sort_mob",
-    ]
     with st.container(key="mob-filter-panel"):
-        # ── Top bar: title + close button ────────────────────────────────────
-        _th, _tc = st.columns([3, 1])
+        # ── Top bar: title + X close button ──────────────────────────────────
+        _th, _tc = st.columns([6, 1])
         with _th:
             st.markdown(
-                "<h3 style='margin:0.2rem 0 0 0; font-size:1.1rem; font-weight:700;"
-                "color:#e2e8f0;'>Filter and Sort</h3>",
+                "<h3 style='margin:0.1rem 0 0 0; font-size:1.05rem; font-weight:700;"
+                "color:#e2e8f0;'>Filter & Sort</h3>",
                 unsafe_allow_html=True,
             )
         with _tc:
-            if st.button("✕ Close", key="f_mob_close", use_container_width=True):
+            if st.button("✕", key="f_mob_close", use_container_width=True):
                 st.session_state["_mob_filters_open"] = False
                 st.rerun()
-        st.divider()
-        # ── Sort ─────────────────────────────────────────────────────────────
-        st.markdown("**Sort**")
+
+        # ── Sort (always visible) ─────────────────────────────────────────────
         st.selectbox(
-            "Sort by",
+            "Sort",
             ["Compatibility", "Chai Score", "Noel Score", "IMDb Score", "Newest First"],
             index=None,
-            placeholder="Compatibility (default)",
-            label_visibility="collapsed",
+            placeholder="Sort: Compatibility (default)",
             key="f_sort_mob",
         )
-        st.divider()
-        # ── Filters ──────────────────────────────────────────────────────────
-        st.markdown("**Services**")
-        st.checkbox("Netflix",    key="f_mob_svc_netflix")
-        st.checkbox("Max",        key="f_mob_svc_max")
-        st.checkbox("Disney+",    key="f_mob_svc_disney")
-        st.checkbox("Hulu",       key="f_mob_svc_hulu")
-        st.checkbox("Apple TV+",  key="f_mob_svc_apple")
-        st.checkbox("Peacock",    key="f_mob_svc_peacock")
-        st.checkbox("Paramount+", key="f_mob_svc_paramount")
-        st.divider()
-        st.markdown("**Content Type**")
-        st.checkbox("Movies",   key="f_mob_type_movies")
-        st.checkbox("TV Shows", key="f_mob_type_tv")
-        st.divider()
-        st.markdown("**Chai Watch Status**")
-        st.checkbox("Seen",     key="f_mob_w_chai_seen")
-        st.checkbox("Not Seen", key="f_mob_w_chai_not_seen")
-        st.divider()
-        st.markdown("**Noel Watch Status**")
-        st.checkbox("Seen",     key="f_mob_w_noel_seen")
-        st.checkbox("Not Seen", key="f_mob_w_noel_not_seen")
-        st.divider()
-        st.markdown("**IMDb Score**")
-        st.slider("Min IMDb", 0.0, 10.0, value=0.0, step=0.5, format="%.1f", key="f_mob_imdb")
-        st.divider()
-        st.markdown("**Release Year**")
-        st.slider("Year", 1900, 2026, value=(1950, 2026), key="f_mob_yr")
-        st.divider()
-        _ba, _bb = st.columns(2)
-        with _ba:
-            if st.button("Clear all", key="f_mob_clear", use_container_width=True):
-                for _k in _mob_keys:
-                    st.session_state.pop(_k, None)
-                st.rerun()
-        with _bb:
-            if st.button("Apply", key="f_mob_apply", type="primary", use_container_width=True):
-                st.session_state["_mob_filters_open"] = False
-                st.rerun()
+
+        # ── Collapsible filter sections ───────────────────────────────────────
+        with st.expander("Services"):
+            st.checkbox("Netflix",    key="f_mob_svc_netflix")
+            st.checkbox("Max",        key="f_mob_svc_max")
+            st.checkbox("Disney+",    key="f_mob_svc_disney")
+            st.checkbox("Hulu",       key="f_mob_svc_hulu")
+            st.checkbox("Apple TV+",  key="f_mob_svc_apple")
+            st.checkbox("Peacock",    key="f_mob_svc_peacock")
+            st.checkbox("Paramount+", key="f_mob_svc_paramount")
+
+        with st.expander("Content Type"):
+            st.checkbox("Movies",   key="f_mob_type_movies")
+            st.checkbox("TV Shows", key="f_mob_type_tv")
+
+        with st.expander("Chai Watch Status"):
+            st.checkbox("Seen",     key="f_mob_w_chai_seen")
+            st.checkbox("Not Seen", key="f_mob_w_chai_not_seen")
+
+        with st.expander("Noel Watch Status"):
+            st.checkbox("Seen",     key="f_mob_w_noel_seen")
+            st.checkbox("Not Seen", key="f_mob_w_noel_not_seen")
+
+        with st.expander("IMDb Score"):
+            st.slider("Min IMDb", 0.0, 10.0, value=0.0, step=0.5, format="%.1f", key="f_mob_imdb")
+
+        with st.expander("Release Year"):
+            st.slider("Year", 1900, 2026, value=(1950, 2026), key="f_mob_yr")
+
+        # ── Apply ─────────────────────────────────────────────────────────────
+        if st.button("Apply", key="f_mob_apply", type="primary", use_container_width=True):
+            st.session_state["_mob_filters_open"] = False
+            st.rerun()
 
 
 def _render_catalog_card(item) -> None:
