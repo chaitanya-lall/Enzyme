@@ -104,18 +104,30 @@ def render_recommend_tab() -> None:
         "Movies & TV" if (not _type_movies and not _type_tv) or _both_types
         else ("Movies" if _type_movies else "TV Shows")
     )
-    _watch_lbl = (
-        f"{len(_watch_sel)} Statuses" if len(_watch_sel) > 1
-        else (_watch_sel[0] if _watch_sel else "Watch Status")
+    _chai_watch_sel = [w for w, v in [("Chai Seen", _w_chai_seen), ("Chai Not Seen", _w_chai_not_seen)] if v]
+    _noel_watch_sel = [w for w, v in [("Noel Seen", _w_noel_seen), ("Noel Not Seen", _w_noel_not_seen)] if v]
+
+    _chai_watch_lbl = (
+        "💖 Both"   if (_w_chai_seen and _w_chai_not_seen)
+        else ("💖 Seen"   if _w_chai_seen
+        else ("💖 Unseen" if _w_chai_not_seen
+        else  "💖 Chai"))
+    )
+    _noel_watch_lbl = (
+        "👔 Both"   if (_w_noel_seen and _w_noel_not_seen)
+        else ("👔 Seen"   if _w_noel_seen
+        else ("👔 Unseen" if _w_noel_not_seen
+        else  "👔 Noel"))
     )
     _imdb_lbl = f"IMDb ≥ {_imdb_val:.1f}" if _imdb_val > 0 else "IMDb Score"
-    _yr_lbl   = f"{_yr_val[0]}–{_yr_val[1]}" if _yr_val != (1950, 2026) else "Release Year"
+    _yr_lbl   = f"{_yr_val[0]}–{_yr_val[1]}" if _yr_val != (1950, 2026) else "Year"
 
     _any_active = bool(services or content_types or _watch_sel or _imdb_val > 0 or _yr_val != (1950, 2026))
 
-    # Active pill highlights — columns in order: svc(1) type(2) watch(3) imdb(4) yr(5)
+    # Active pill highlights — columns in order: svc(1) type(2) chai-watch(3) noel-watch(4) imdb(5) yr(6)
     _pill_css = ""
-    for _i, _active in enumerate([bool(services), bool(content_types), bool(_watch_sel),
+    for _i, _active in enumerate([bool(services), bool(content_types),
+                                   bool(_chai_watch_sel), bool(_noel_watch_sel),
                                    _imdb_val > 0, _yr_val != (1950, 2026)], 1):
         if _active:
             _pill_css += (
@@ -128,14 +140,14 @@ def render_recommend_tab() -> None:
         st.markdown(f"<style>{_pill_css}</style>", unsafe_allow_html=True)
 
     with st.container(key="filter-bar"):
-        fc_svc, fc_type, fc_watch, fc_imdb, fc_yr, fc_sep, fc_clr, fc_srt = st.columns(
-            [1.6, 1.6, 1.6, 1.6, 1.6, 0.12, 0.9, 2.2], vertical_alignment="center"
+        fc_svc, fc_type, fc_chai_w, fc_noel_w, fc_imdb, fc_yr, fc_sep, fc_clr, fc_srt = st.columns(
+            [1.3, 1.3, 1.1, 1.1, 1.3, 1.35, 0.12, 0.75, 2.0], vertical_alignment="center"
         )
         with fc_svc:
             with st.popover(_svc_lbl, use_container_width=True):
-                st.checkbox("Netflix",  key="f_svc_netflix")
-                st.checkbox("Max",      key="f_svc_max")
-                st.checkbox("Disney+", key="f_svc_disney")
+                st.checkbox("Netflix",     key="f_svc_netflix")
+                st.checkbox("Max",         key="f_svc_max")
+                st.checkbox("Disney+",     key="f_svc_disney")
                 st.checkbox("Hulu",        key="f_svc_hulu")
                 st.checkbox("Apple TV+",   key="f_svc_apple")
                 st.checkbox("Peacock",     key="f_svc_peacock")
@@ -144,12 +156,14 @@ def render_recommend_tab() -> None:
             with st.popover(_type_lbl, use_container_width=True):
                 st.checkbox("Movies",   key="f_type_movies")
                 st.checkbox("TV Shows", key="f_type_tv")
-        with fc_watch:
-            with st.popover(_watch_lbl, use_container_width=True):
-                st.checkbox("Chai Seen",     key="f_w_chai_seen")
-                st.checkbox("Chai Not Seen", key="f_w_chai_not_seen")
-                st.checkbox("Noel Seen",     key="f_w_noel_seen")
-                st.checkbox("Noel Not Seen", key="f_w_noel_not_seen")
+        with fc_chai_w:
+            with st.popover(_chai_watch_lbl, use_container_width=True):
+                st.checkbox("Seen",     key="f_w_chai_seen")
+                st.checkbox("Not Seen", key="f_w_chai_not_seen")
+        with fc_noel_w:
+            with st.popover(_noel_watch_lbl, use_container_width=True):
+                st.checkbox("Seen",     key="f_w_noel_seen")
+                st.checkbox("Not Seen", key="f_w_noel_not_seen")
         with fc_imdb:
             with st.popover(_imdb_lbl, use_container_width=True):
                 min_imdb = st.slider(

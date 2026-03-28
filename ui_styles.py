@@ -380,7 +380,7 @@ div[data-testid="stColumn"]:has(.catalog-card) .stButton > button:hover {
   background: #ffffff !important;
   border: 1px solid #d1d5db !important;
   width: 100% !important;
-  padding: 0 0.9rem !important;
+  padding: 0 0.55rem !important;
   text-align: center !important;
   justify-content: center !important;
 }
