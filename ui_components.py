@@ -845,6 +845,7 @@ def catalog_movie_detail(imdb_id: str) -> None:
   margin: 0 !important;
   background: #0a0b0f !important;
   overflow-y: auto !important; overflow-x: hidden !important;
+  will-change: transform !important;
   animation: sheetUp 0.35s cubic-bezier(0.32, 0.72, 0, 1) !important;
 }
 @keyframes sheetUp {

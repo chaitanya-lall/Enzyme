@@ -21,6 +21,17 @@ from ui_components import (
 )
 from ui_catalog import render_recommend_tab
 
+# ─── Search cache (ttl=5 min) — prevents repeated OMDb calls for same query ──
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_movie_search(q: str) -> list:
+    """Cached wrapper around search_omdb so identical queries hit memory, not the API."""
+    if not q or len(q) < 2:
+        return []
+    matches = search_omdb(q)
+    return [(f"{m['title']} ({m['year']})", m["imdbID"]) for m in matches]
+
+
 # ─── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="The Personalized Movie Recommender",
@@ -53,10 +64,11 @@ def main():
             st.session_state["_sync_toast_shown"] = True
             _load_catalog.clear()   # invalidate the catalog cache
 
-    _LOGO_B64_HDR = open(
-        os.path.join(os.path.dirname(__file__), "assets", "logo_b64.txt")
-    ).read().strip()
-    st.session_state["_logo_b64"] = _LOGO_B64_HDR
+    if "_logo_b64" not in st.session_state:
+        st.session_state["_logo_b64"] = open(
+            os.path.join(os.path.dirname(__file__), "assets", "logo_b64.txt")
+        ).read().strip()
+    _LOGO_B64_HDR = st.session_state["_logo_b64"]
 
     # ── Nav bar ───────────────────────────────────────────────────────────────
     if "active_tab" not in st.session_state:
@@ -155,18 +167,13 @@ def _render_search_tab():
 </script>
 """, height=0)
 
-    def _movie_search(q: str):
-        if not q or len(q) < 2:
-            return []
-        matches = search_omdb(q)
-        return [(f"{m['title']} ({m['year']})", m["imdbID"]) for m in matches]
-
     _FONT = "'Source Sans Pro', sans-serif"
     selected = st_searchbox(
-        _movie_search,
+        _cached_movie_search,
         placeholder="🔍  Search a movie title…",
         key="movie_searchbox",
         clear_on_submit=False,
+        debounce=300,
         style_absolute=True,
         style_overrides={
             "searchbox": {
