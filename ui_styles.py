@@ -234,12 +234,26 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) 
     z-index: 1000 !important;
     background: #13161f !important;
     overflow-y: auto !important;
-    padding: 1.5rem 1rem 5rem 1rem !important;
+    padding: 0.75rem 1rem 2.5rem 1rem !important;
     margin: 0 !important;
     border-radius: 0 !important;
     border: none !important;
     /* Darken everything behind it */
     box-shadow: 0 0 0 200vw rgba(0,0,0,0.75) !important;
+  }
+  /* Halve the vertical flex gap between all elements in the panel */
+  .st-key-mob-filter-panel [data-testid="stVerticalBlock"] {
+    gap: 0.5rem !important;
+  }
+  /* Halve divider margins */
+  .st-key-mob-filter-panel hr {
+    margin-top: 0.25rem !important;
+    margin-bottom: 0.25rem !important;
+  }
+  /* Halve the stElementContainer padding that Streamlit adds around each widget */
+  .st-key-mob-filter-panel [data-testid="stElementContainer"] {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
   }
 }
 
