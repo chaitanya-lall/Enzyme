@@ -202,6 +202,7 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) 
 /* Mobile filter bar styles — single full-width "Filter and Sort" pill */
 .st-key-mob-filter-bar {
   padding: 0 0 0.8rem 0;
+  margin-top: -32px !important;
   position: sticky;
   top: 0;
   z-index: 99;
@@ -331,9 +332,19 @@ div[data-testid="stColumn"]:has(.catalog-card) .stButton > button:hover {
 /* ── Filter bar ──────────────────────────────────── */
 .st-key-filter-bar {
   background: transparent;
-  padding: 0 0 1.2rem 0;
+  padding: 0;
+  margin-top: 0 !important;
   margin-bottom: 0;
   border: none;
+}
+/* Catalog grid: pull up to match Search tab searchbox→result gap (~58px) */
+.st-key-catalog-grid {
+  margin-top: -22px !important;
+}
+@media (max-width: 768px) {
+  .st-key-catalog-grid {
+    margin-top: -22px !important;
+  }
 }
 /* Vertically center ALL columns in the filter row */
 .st-key-filter-bar div[data-testid="stHorizontalBlock"] {
@@ -385,8 +396,7 @@ div[data-testid="stColumn"]:has(.catalog-card) .stButton > button:hover {
 /* Fix: nth-child(2/3) global padding rule has higher specificity — counter it for filter bar */
 .st-key-filter-bar div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2),
 .st-key-filter-bar div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(3) {
-  padding-left: 0 !important;
-  padding-right: 0 !important;
+  padding: 0 !important;
 }
 /* Clear all — borderless text */
 .st-key-filter-bar [data-testid="stBaseButton-secondary"]:not([data-testid="stPopover"] button) {

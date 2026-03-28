@@ -851,22 +851,38 @@ def catalog_movie_detail(imdb_id: str) -> None:
   from { transform: translateY(100%); }
   to   { transform: translateY(0); }
 }
-/* Inner white dialog box → match app background */
+/* d1: Streamlit's backdrop wrapper — make transparent + block layout so d2 starts at dialog top */
+[data-testid="stDialog"] > div {
+  background: transparent !important;
+  padding: 0 !important;
+  display: block !important;
+}
+/* d2: inner dialog box — flush with outer shell, no visual separation */
 [data-testid="stDialog"] > div > div {
   background: #0a0b0f !important;
   border: none !important;
-  box-shadow: 0 -4px 24px rgba(0,0,0,0.6) !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
   width: 100% !important;
   max-width: 100% !important;
+  margin: 0 !important;
   padding: 0 !important;
 }
-/* Depth-3 content containers — halve Streamlit's default 24px padding */
+/* d3 children: uniform 6px padding; first-child is the CSS-injection div — collapse it to zero */
 [data-testid="stDialog"] > div > div > div {
-  padding-left: 12px !important;
-  padding-right: 12px !important;
-  padding-top: 12px !important;
+  padding: 6px !important;
   width: 100% !important;
   max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+[data-testid="stDialog"] > div > div > div:first-child {
+  padding: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+}
+/* Pull content up to absorb Streamlit's ~36px internal stVerticalBlock gap before the columns */
+[data-testid="stDialog"] > div > div > div:not(:first-child) {
+  margin-top: -36px !important;
 }
 /* Dark column boxes inside the sheet (mirrors Search tab styling) */
 [data-testid="stDialog"] [data-testid="stColumn"] {

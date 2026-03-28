@@ -202,3 +202,4 @@ After retraining, restart the app (kill + rerun) to load new model artifacts.
 - Do not make CSS changes without regression testing the nav bar, catalog cards, and search results
 - Do not add blocking I/O to `catalog_sync.py`
 - Do not use `OMDB_API_KEY_6` in any pipeline script — it is reserved for the website
+- Do not `git push` to GitHub unless the user explicitly says to push or publish. **Exception:** the daily catalog enrichment process (`daily_seed.sh` / `catalog_seed.py`) may automatically push `data/catalog_data.parquet` and `data/seen_ids.json` to GitHub as part of its normal run — this is expected and pre-approved.

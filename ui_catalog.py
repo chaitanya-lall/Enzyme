@@ -264,18 +264,19 @@ def render_recommend_tab() -> None:
 
     visible = st.session_state.get("_catalog_visible", 8)
 
-    if len(dff) == 0:
-        st.markdown(
-            "<div style='text-align:center; padding:2.5rem; color:#6b7280;'>"
-            "No matches found — try adjusting your filters!</div>",
-            unsafe_allow_html=True,
-        )
-    else:
-        # Inject once: make catalog-card taps fire the hidden Details button on mobile.
-        # Uses event delegation on parent.document so the listener survives Streamlit
-        # reruns (the components iframe may be recreated, but the listener on
-        # parent.document persists). The _enzymeCardTap guard prevents duplicates.
-        _components.html("""<script>
+    with st.container(key="catalog-grid"):
+        if len(dff) == 0:
+            st.markdown(
+                "<div style='text-align:center; padding:2.5rem; color:#6b7280;'>"
+                "No matches found — try adjusting your filters!</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            # Inject once: make catalog-card taps fire the hidden Details button on mobile.
+            # Uses event delegation on parent.document so the listener survives Streamlit
+            # reruns (the components iframe may be recreated, but the listener on
+            # parent.document persists). The _enzymeCardTap guard prevents duplicates.
+            _components.html("""<script>
 (function() {
   if (parent.window._enzymeCardTap) return;
   parent.window._enzymeCardTap = true;
@@ -291,28 +292,28 @@ def render_recommend_tab() -> None:
 })();
 </script>""", height=0)
 
-        N = 4
-        dff_reset = dff.reset_index(drop=True).iloc[:visible]
-        for row_start in range(0, len(dff_reset), N):
-            chunk = dff_reset.iloc[row_start: row_start + N]
-            cols  = st.columns(N)
-            for j, (_, item) in enumerate(chunk.iterrows()):
-                with cols[j]:
-                    _render_catalog_card(item)
-            st.markdown("<div style='margin-bottom:0.5rem;'></div>",
-                        unsafe_allow_html=True)
+            N = 4
+            dff_reset = dff.reset_index(drop=True).iloc[:visible]
+            for row_start in range(0, len(dff_reset), N):
+                chunk = dff_reset.iloc[row_start: row_start + N]
+                cols  = st.columns(N)
+                for j, (_, item) in enumerate(chunk.iterrows()):
+                    with cols[j]:
+                        _render_catalog_card(item)
+                st.markdown("<div style='margin-bottom:0.5rem;'></div>",
+                            unsafe_allow_html=True)
 
-        if visible < len(dff):
-            remaining = len(dff) - visible
-            _, load_col, _ = st.columns([2, 1, 2])
-            with load_col:
-                if st.button(
-                    f"Load more  (+{min(16, remaining)})",
-                    key="catalog_load_more",
-                    use_container_width=True,
-                ):
-                    st.session_state["_catalog_visible"] = visible + 16
-                    st.rerun()
+            if visible < len(dff):
+                remaining = len(dff) - visible
+                _, load_col, _ = st.columns([2, 1, 2])
+                with load_col:
+                    if st.button(
+                        f"Load more  (+{min(16, remaining)})",
+                        key="catalog_load_more",
+                        use_container_width=True,
+                    ):
+                        st.session_state["_catalog_visible"] = visible + 16
+                        st.rerun()
 
     # ── Footer ────────────────────────────────────────────────────────────────
     age = catalog_age_days()
