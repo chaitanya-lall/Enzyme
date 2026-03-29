@@ -1,0 +1,15 @@
+pandas
+numpy
+requests
+pyarrow
+sentence-transformers
+xgboost
+scikit-learn
+shap
+joblib
+flask
+flask-cors
+groq
+beautifulsoup4
+google-generativeai
+gunicorn

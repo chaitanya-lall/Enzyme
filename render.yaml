@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: enzyme-api
+    runtime: python
+    buildCommand: pip install -r requirements-api.txt
+    startCommand: gunicorn api:app --bind 0.0.0.0:$PORT --timeout 120 --workers 1
+    envVars:
+      - key: OMDB_API_KEY_6
+        sync: false
+      - key: OMDB_API_KEY_5
+        sync: false
+      - key: OMDB_API_KEY
+        sync: false
+      - key: OMDB_APP_KEY
+        sync: false
+      - key: OMDB_API_KEY_2
+        sync: false
+      - key: OMDB_NOEL_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
