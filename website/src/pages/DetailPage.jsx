@@ -4,7 +4,7 @@ import ChromeTab from '../components/ChromeTab';
 import OverviewTab from '../components/tabs/OverviewTab';
 import ChaiTab from '../components/tabs/ChaiTab';
 import NoelTab from '../components/tabs/NoelTab';
-import { fetchMovie } from '../services/api';
+import { fetchMovie, fetchMovieML } from '../services/api';
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
@@ -18,13 +18,43 @@ export default function DetailPage() {
   const [movie, setMovie] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [mlData, setMlData] = useState(null);
+  const [mlStatus, setMlStatus] = useState('idle'); // 'idle' | 'running' | 'done' | 'error'
 
+  // Load basic data immediately
   useEffect(() => {
     setLoading(true);
+    setMlData(null);
+    setMlStatus('idle');
     fetchMovie(id)
       .then(data => { setMovie(data); setLoading(false); })
       .catch(() => { setMovie(null); setLoading(false); });
   }, [id]);
+
+  // Poll for ML data after basic data loads
+  useEffect(() => {
+    if (!movie) return;
+    let interval;
+    const poll = () => {
+      fetchMovieML(id)
+        .then(data => {
+          if (data.status === 'done') {
+            setMlData(data);
+            setMlStatus('done');
+            clearInterval(interval);
+          } else if (data.status === 'error') {
+            setMlStatus('error');
+            clearInterval(interval);
+          } else {
+            setMlStatus('running');
+          }
+        })
+        .catch(() => { setMlStatus('error'); clearInterval(interval); });
+    };
+    poll();
+    interval = setInterval(poll, 2500);
+    return () => clearInterval(interval);
+  }, [movie?.id]);
 
   if (loading) {
     return (
@@ -148,8 +178,8 @@ export default function DetailPage() {
       {/* Tab content */}
       <div>
         {activeTab === 'overview' && <OverviewTab movie={movie} />}
-        {activeTab === 'chai' && <ChaiTab movie={movie} />}
-        {activeTab === 'noel' && <NoelTab movie={movie} />}
+        {activeTab === 'chai' && <ChaiTab movie={movie} mlData={mlData} mlLoading={mlStatus === 'running'} />}
+        {activeTab === 'noel' && <NoelTab movie={movie} mlData={mlData} mlLoading={mlStatus === 'running'} />}
       </div>
     </div>
   );

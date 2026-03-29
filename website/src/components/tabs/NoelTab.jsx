@@ -1,5 +1,5 @@
-export default function NoelTab({ movie }) {
-  const noel = movie.noel || {};
+export default function NoelTab({ movie, mlData, mlLoading }) {
+  const noel = { ...(movie.noel || {}), ...(mlData ? { drivers: mlData.noel_drivers, closestMatch: mlData.noel_closest_match } : {}) };
   const score = movie.noelScore;
   const color = score >= 85 ? '#ffb4aa' : score >= 70 ? '#b1c8ed' : '#8b919d';
 
@@ -82,8 +82,12 @@ export default function NoelTab({ movie }) {
         </Section>
       )}
 
-      {/* Key Drivers — only shown when available */}
-      {noel.drivers && noel.drivers.length > 0 && (
+      {/* Key Drivers */}
+      {mlLoading && !noel.drivers?.length ? (
+        <Section label="Key Drivers">
+          <p style={{ fontSize: 12, color: '#484847' }}>Analyzing…</p>
+        </Section>
+      ) : noel.drivers && noel.drivers.length > 0 && (
         <Section label="Key Drivers">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {noel.drivers.map((d, i) => (
@@ -94,7 +98,7 @@ export default function NoelTab({ movie }) {
       )}
 
       {/* Closest Match */}
-      {noel.closestMatch && (
+      {mlLoading && !noel.closestMatch ? null : noel.closestMatch && (
         <Section label="Closest Match in History">
           <div style={{
             background: '#1c1b1b', borderRadius: 12, padding: '14px 16px',

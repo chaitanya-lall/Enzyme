@@ -9,6 +9,7 @@ import pandas as pd
 import json
 import os
 import sys
+import threading
 
 # Ensure Enzyme's own modules (predict.py, config.py, etc.) are importable
 _ENZYME_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -31,8 +32,9 @@ df = df[df['type'] == 'movie'].copy()
 chai_seen = set(seen.get('chai_seen', []))
 noel_seen = set(seen.get('noel_seen', []))
 
-# In-process ML pipeline result cache (avoids recomputing on repeated requests)
+# In-process ML pipeline result cache + in-flight tracker
 _ml_cache: dict = {}
+_ml_running: set = set()
 
 # Parents guide keyed by imdb_id
 pg_lookup = {row['Const']: row for _, row in pg_df.iterrows()}
@@ -244,20 +246,42 @@ def _run_ml_pipeline(imdb_id, title):
 
 @app.route('/api/movie/<imdb_id>')
 def movie_detail(imdb_id):
+    """Returns basic parquet data immediately — no ML pipeline."""
     rows = df[df['imdb_id'] == imdb_id]
     if rows.empty:
         return jsonify({'error': 'Not found'}), 404
+    return jsonify(_row_to_detail(rows.iloc[0]))
 
-    detail = _row_to_detail(rows.iloc[0])
 
-    ml = _run_ml_pipeline(imdb_id, detail.get('title', ''))
-    if ml:
-        detail['chai']['drivers']      = ml['chai_drivers']
-        detail['chai']['closestMatch'] = ml['chai_closest_match']
-        detail['noel']['drivers']      = ml['noel_drivers']
-        detail['noel']['closestMatch'] = ml['noel_closest_match']
+def _run_ml_pipeline_bg(imdb_id, title):
+    """Background thread wrapper — runs ML and stores result in cache."""
+    _run_ml_pipeline(imdb_id, title)
+    _ml_running.discard(imdb_id)
 
-    return jsonify(detail)
+
+@app.route('/api/movie/<imdb_id>/ml')
+def movie_ml(imdb_id):
+    """
+    Async ML endpoint. Call after the basic detail loads.
+    Returns {"status": "done", ...drivers/match...} or {"status": "running"}.
+    Kicks off a background thread on first call.
+    """
+    if imdb_id in _ml_cache:
+        result = _ml_cache[imdb_id]
+        if result is None:
+            return jsonify({'status': 'error'})
+        return jsonify({'status': 'done', **result})
+
+    if imdb_id not in _ml_running:
+        rows = df[df['imdb_id'] == imdb_id]
+        if rows.empty:
+            return jsonify({'status': 'error'})
+        title = str(rows.iloc[0]['title'])
+        _ml_running.add(imdb_id)
+        t = threading.Thread(target=_run_ml_pipeline_bg, args=(imdb_id, title), daemon=True)
+        t.start()
+
+    return jsonify({'status': 'running'})
 
 
 @app.route('/api/health')

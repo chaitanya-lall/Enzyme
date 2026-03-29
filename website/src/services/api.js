@@ -11,3 +11,9 @@ export async function fetchMovie(id) {
   if (!res.ok) throw new Error('Movie not found');
   return res.json();
 }
+
+export async function fetchMovieML(id) {
+  const res = await fetch(`${API_BASE}/api/movie/${encodeURIComponent(id)}/ml`);
+  if (!res.ok) throw new Error('ML fetch failed');
+  return res.json();
+}

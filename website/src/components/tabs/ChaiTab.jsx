@@ -1,5 +1,5 @@
-export default function ChaiTab({ movie }) {
-  const chai = movie.chai || {};
+export default function ChaiTab({ movie, mlData, mlLoading }) {
+  const chai = { ...(movie.chai || {}), ...(mlData ? { drivers: mlData.chai_drivers, closestMatch: mlData.chai_closest_match } : {}) };
   const score = movie.chaiScore;
   const color = score >= 85 ? '#a4c9ff' : score >= 70 ? '#b1c8ed' : '#8b919d';
 
@@ -82,8 +82,12 @@ export default function ChaiTab({ movie }) {
         </Section>
       )}
 
-      {/* Key Drivers — only shown when available */}
-      {chai.drivers && chai.drivers.length > 0 && (
+      {/* Key Drivers */}
+      {mlLoading && !chai.drivers?.length ? (
+        <Section label="Key Drivers">
+          <p style={{ fontSize: 12, color: '#484847' }}>Analyzing…</p>
+        </Section>
+      ) : chai.drivers && chai.drivers.length > 0 && (
         <Section label="Key Drivers">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {chai.drivers.map((d, i) => (
@@ -94,7 +98,7 @@ export default function ChaiTab({ movie }) {
       )}
 
       {/* Closest Match */}
-      {chai.closestMatch && (
+      {mlLoading && !chai.closestMatch ? null : chai.closestMatch && (
         <Section label="Closest Match in History">
           <div style={{
             background: '#1c1b1b', borderRadius: 12, padding: '14px 16px',
