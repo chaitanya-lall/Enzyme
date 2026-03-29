@@ -208,13 +208,15 @@ def render_recommend_tab() -> None:
         _w_chai_seen, _w_chai_not_seen, _w_noel_seen, _w_noel_not_seen,
         _imdb_val > 0, _yr_val != (1950, 2026),
     ])
-    _mob_filter_lbl = f"Filter and Sort ({_mob_active_count} active) ▾" if _mob_active_count else "Filter and Sort ▾"
+    _mob_filter_lbl = f"Filter ({_mob_active_count}) ▾" if _mob_active_count else "Filter ▾"
     _mob_open = st.session_state.get("_mob_filters_open", False)
-    # Inject CSS to show/hide the panel — panel is ALWAYS rendered so its
-    # widget state is never lost by Streamlit on reruns (e.g. after Load More).
-    _panel_css = "block" if _mob_open else "none"
+    # Show/hide the panel and the JS-injected backdrop element together.
+    _panel_display = "block" if _mob_open else "none"
     st.markdown(
-        f"<style>.st-key-mob-filter-panel {{ display: {_panel_css} !important; }}</style>",
+        f"<style>"
+        f".st-key-mob-filter-panel {{ display: {_panel_display} !important; }}"
+        f"#enzyme-mob-bd {{ display: {_panel_display} !important; }}"
+        f"</style>",
         unsafe_allow_html=True,
     )
     with st.container(key="mob-filter-bar"):
@@ -222,6 +224,35 @@ def render_recommend_tab() -> None:
         if st.button(_mob_btn_lbl, key="f_mob_open", use_container_width=True):
             st.session_state["_mob_filters_open"] = not _mob_open
             st.rerun()
+
+    # Active filter chips — horizontal scrollable row (CSS-hidden on desktop)
+    _active_chips: list[tuple[str, str, str]] = []
+    if _svc_netflix:     _active_chips.append(("Netflix",      "f_svc_netflix",     "f_mob_svc_netflix"))
+    if _svc_max:         _active_chips.append(("Max",          "f_svc_max",         "f_mob_svc_max"))
+    if _svc_disney:      _active_chips.append(("Disney+",      "f_svc_disney",      "f_mob_svc_disney"))
+    if _svc_hulu:        _active_chips.append(("Hulu",         "f_svc_hulu",        "f_mob_svc_hulu"))
+    if _svc_apple:       _active_chips.append(("Apple TV+",    "f_svc_apple",       "f_mob_svc_apple"))
+    if _svc_peacock:     _active_chips.append(("Peacock",      "f_svc_peacock",     "f_mob_svc_peacock"))
+    if _svc_paramount:   _active_chips.append(("Paramount+",   "f_svc_paramount",   "f_mob_svc_paramount"))
+    if _type_movies:     _active_chips.append(("Movies",       "f_type_movies",     "f_mob_type_movies"))
+    if _type_tv:         _active_chips.append(("TV Shows",     "f_type_tv",         "f_mob_type_tv"))
+    if _w_chai_seen:     _active_chips.append(("Chai: Seen",   "f_w_chai_seen",     "f_mob_w_chai_seen"))
+    if _w_chai_not_seen: _active_chips.append(("Chai: Unseen", "f_w_chai_not_seen", "f_mob_w_chai_not_seen"))
+    if _w_noel_seen:     _active_chips.append(("Noel: Seen",   "f_w_noel_seen",     "f_mob_w_noel_seen"))
+    if _w_noel_not_seen: _active_chips.append(("Noel: Unseen", "f_w_noel_not_seen", "f_mob_w_noel_not_seen"))
+    if _imdb_val > 0:    _active_chips.append((f"IMDb ≥{_imdb_val:.0f}", "f_imdb", "f_mob_imdb"))
+    if _yr_val != (1950, 2026):
+        _active_chips.append((f"{_yr_val[0]}–{_yr_val[1]}", "f_yr", "f_mob_yr"))
+    if _active_chips:
+        with st.container(key="mob-chip-bar"):
+            _chip_cols = st.columns(len(_active_chips))
+            for _ccol, (_clbl, _cdk, _cmk) in zip(_chip_cols, _active_chips):
+                with _ccol:
+                    if st.button(f"{_clbl} ✕", key=f"chip_{_cdk}"):
+                        st.session_state.pop(_cdk, None)
+                        st.session_state.pop(_cmk, None)
+                        st.rerun()
+
     # Always render the panel (CSS controls visibility so widget state persists)
     _mobile_filters_panel()
     # Prefer mobile sort if user explicitly picked one, otherwise desktop value

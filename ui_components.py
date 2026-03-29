@@ -29,6 +29,7 @@ import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
+import streamlit.components.v1 as _components
 from groq import Groq
 from io import BytesIO
 from PIL import Image
@@ -902,65 +903,146 @@ def catalog_movie_detail(imdb_id: str) -> None:
 
 
 def _mobile_filters_panel():
-    """Mobile-only inline filter+sort panel (uses f_mob_* keys to avoid ID conflicts).
-    Rendered directly in page flow — no dialog/fragment isolation — so filter state
-    is reliably read by the catalog filter logic on the same rerun.
+    """Mobile-only bottom-sheet filter+sort panel.
+    Header and footer are CSS-sticky; body scrolls between them.
+    Backdrop (injected via JS) closes the sheet on outside tap.
     """
+    _mob_keys = [
+        "f_mob_svc_netflix", "f_mob_svc_max", "f_mob_svc_disney",
+        "f_mob_svc_hulu", "f_mob_svc_apple", "f_mob_svc_peacock", "f_mob_svc_paramount",
+        "f_mob_type_movies", "f_mob_type_tv",
+        "f_mob_w_chai_seen", "f_mob_w_chai_not_seen", "f_mob_w_noel_seen", "f_mob_w_noel_not_seen",
+        "f_mob_imdb", "f_mob_yr", "f_sort_mob",
+    ]
+
+    # Inject backdrop element once per browser session.
+    # Backdrop display is controlled by CSS injected in render_recommend_tab.
+    # On backdrop click (or X/Apply): fade-out animation plays during Streamlit rerun latency.
+    _components.html("""<script>
+(function() {
+  if (parent.window._enzymeBackdropInit) return;
+  parent.window._enzymeBackdropInit = true;
+
+  var bd = parent.document.createElement('div');
+  bd.id = 'enzyme-mob-bd';
+  bd.style.cssText = 'position:fixed;inset:0;z-index:998;background:rgba(0,0,0,0.6);display:none;pointer-events:auto;transition:opacity 0.2s;';
+  parent.document.body.appendChild(bd);
+
+  function findCloseBtn(panel) {
+    var btns = panel.querySelectorAll('button');
+    for (var i = 0; i < btns.length; i++) {
+      var inner = btns[i].querySelector('p,span,div');
+      if (inner && inner.textContent.trim() === '\u2715') return btns[i];
+      if (btns[i].textContent.trim() === '\u2715') return btns[i];
+    }
+    return null;
+  }
+
+  function startCloseAnim(panel) {
+    panel.classList.add('mob-sheet-closing');
+    bd.style.opacity = '0';
+  }
+
+  bd.addEventListener('click', function() {
+    var panel = parent.document.querySelector('.st-key-mob-filter-panel');
+    if (!panel) return;
+    startCloseAnim(panel);
+    var btn = findCloseBtn(panel);
+    if (btn) btn.click();
+  });
+
+  // Intercept X and Apply buttons to play fade-out before Streamlit reruns
+  new MutationObserver(function() {
+    var panel = parent.document.querySelector('.st-key-mob-filter-panel');
+    if (!panel) return;
+    var btns = panel.querySelectorAll('button');
+    for (var i = 0; i < btns.length; i++) {
+      var btn = btns[i];
+      if (btn._enzymeIntercepted) continue;
+      var txt = btn.textContent.trim();
+      if (txt === '\u2715' || txt === 'Apply') {
+        btn._enzymeIntercepted = true;
+        btn.addEventListener('click', function() {
+          var p = parent.document.querySelector('.st-key-mob-filter-panel');
+          if (p) startCloseAnim(p);
+        }, true);
+      }
+    }
+  }).observe(parent.document.body, {childList: true, subtree: true});
+})();
+</script>""", height=0)
+
     with st.container(key="mob-filter-panel"):
-        # ── Top bar: title + X close button ──────────────────────────────────
-        _th, _tc = st.columns([6, 1])
-        with _th:
-            st.markdown(
-                "<h3 style='margin:0.1rem 0 0 0; font-size:1.05rem; font-weight:700;"
-                "color:#e2e8f0;'>Filter & Sort</h3>",
-                unsafe_allow_html=True,
+        # ── Header ────────────────────────────────────────────────────────────
+        with st.container(key="mob-panel-header"):
+            _th, _tc = st.columns([6, 1])
+            with _th:
+                st.markdown(
+                    "<p style='margin:0; font-size:1.05rem; font-weight:700;"
+                    "color:#e2e8f0; line-height:1;'>Filters &amp; Sort</p>",
+                    unsafe_allow_html=True,
+                )
+            with _tc:
+                if st.button("✕", key="f_mob_close", use_container_width=True):
+                    st.session_state["_mob_filters_open"] = False
+                    st.rerun()
+
+        # ── Scrollable body ───────────────────────────────────────────────────
+        with st.container(key="mob-panel-body"):
+            st.selectbox(
+                "Sort by",
+                ["Compatibility", "Chai Score", "Noel Score", "IMDb Score", "Newest First"],
+                index=None,
+                placeholder="Sort: Compatibility (default)",
+                key="f_sort_mob",
+                label_visibility="collapsed",
             )
-        with _tc:
-            if st.button("✕", key="f_mob_close", use_container_width=True):
-                st.session_state["_mob_filters_open"] = False
-                st.rerun()
-
-        # ── Sort (always visible) ─────────────────────────────────────────────
-        st.selectbox(
-            "Sort",
-            ["Compatibility", "Chai Score", "Noel Score", "IMDb Score", "Newest First"],
-            index=None,
-            placeholder="Sort: Compatibility (default)",
-            key="f_sort_mob",
-        )
-
-        # ── Collapsible filter sections ───────────────────────────────────────
-        with st.expander("Services"):
-            st.checkbox("Netflix",    key="f_mob_svc_netflix")
-            st.checkbox("Max",        key="f_mob_svc_max")
-            st.checkbox("Disney+",    key="f_mob_svc_disney")
-            st.checkbox("Hulu",       key="f_mob_svc_hulu")
-            st.checkbox("Apple TV+",  key="f_mob_svc_apple")
-            st.checkbox("Peacock",    key="f_mob_svc_peacock")
-            st.checkbox("Paramount+", key="f_mob_svc_paramount")
-
-        with st.expander("Content Type"):
+            # Services — stays as collapsible expander
+            with st.expander("Services"):
+                st.checkbox("Netflix",    key="f_mob_svc_netflix")
+                st.checkbox("Max",        key="f_mob_svc_max")
+                st.checkbox("Disney+",    key="f_mob_svc_disney")
+                st.checkbox("Hulu",       key="f_mob_svc_hulu")
+                st.checkbox("Apple TV+",  key="f_mob_svc_apple")
+                st.checkbox("Peacock",    key="f_mob_svc_peacock")
+                st.checkbox("Paramount+", key="f_mob_svc_paramount")
+            # Content Type — fully expanded
+            st.markdown("<p class='mob-section-label'>Content Type</p>", unsafe_allow_html=True)
             st.checkbox("Movies",   key="f_mob_type_movies")
             st.checkbox("TV Shows", key="f_mob_type_tv")
-
-        with st.expander("Chai Watch Status"):
+            # Chai Watch Status — fully expanded
+            st.markdown("<p class='mob-section-label'>Chai</p>", unsafe_allow_html=True)
             st.checkbox("Seen",     key="f_mob_w_chai_seen")
             st.checkbox("Not Seen", key="f_mob_w_chai_not_seen")
-
-        with st.expander("Noel Watch Status"):
+            # Noel Watch Status — fully expanded
+            st.markdown("<p class='mob-section-label'>Noel</p>", unsafe_allow_html=True)
             st.checkbox("Seen",     key="f_mob_w_noel_seen")
             st.checkbox("Not Seen", key="f_mob_w_noel_not_seen")
+            # IMDb Score — fully expanded
+            st.markdown("<p class='mob-section-label'>IMDb Score</p>", unsafe_allow_html=True)
+            st.slider(
+                "Min IMDb", 0.0, 10.0, value=0.0, step=0.5, format="%.1f",
+                key="f_mob_imdb", label_visibility="collapsed",
+            )
+            # Release Year — fully expanded
+            st.markdown("<p class='mob-section-label'>Release Year</p>", unsafe_allow_html=True)
+            st.slider(
+                "Year", 1900, 2026, value=(1950, 2026),
+                key="f_mob_yr", label_visibility="collapsed",
+            )
 
-        with st.expander("IMDb Score"):
-            st.slider("Min IMDb", 0.0, 10.0, value=0.0, step=0.5, format="%.1f", key="f_mob_imdb")
-
-        with st.expander("Release Year"):
-            st.slider("Year", 1900, 2026, value=(1950, 2026), key="f_mob_yr")
-
-        # ── Apply ─────────────────────────────────────────────────────────────
-        if st.button("Apply", key="f_mob_apply", type="primary", use_container_width=True):
-            st.session_state["_mob_filters_open"] = False
-            st.rerun()
+        # ── Footer: 50% Clear All / 50% Apply ─────────────────────────────────
+        with st.container(key="mob-panel-footer"):
+            _fa, _fb = st.columns([1, 1])
+            with _fa:
+                if st.button("Clear All", key="f_mob_clear", use_container_width=True):
+                    for _k in _mob_keys:
+                        st.session_state.pop(_k, None)
+                    st.rerun()
+            with _fb:
+                if st.button("Apply", key="f_mob_apply", type="primary", use_container_width=True):
+                    st.session_state["_mob_filters_open"] = False
+                    st.rerun()
 
 
 def _render_catalog_card(item) -> None:

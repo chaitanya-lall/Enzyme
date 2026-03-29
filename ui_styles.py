@@ -1,4 +1,5 @@
 APP_CSS = """<style>
+html, body { background-color: #0a0b0f; }
 .stApp { background-color: #0a0b0f; color: #f0f0f0; }
 header[data-testid="stHeader"] { display: none !important; }
 #MainMenu { display: none !important; }
@@ -221,72 +222,241 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) 
 .st-key-mob-filter-bar button div,
 .st-key-mob-filter-bar button span { color: #000000 !important; }
 
-/* Mobile inline filter panel — full-screen overlay (dialog-style) on mobile.
-   Rendered inline in the DOM for reliable state management, but CSS positions
-   it as a fixed overlay so it looks and feels like the original @st.dialog. */
+/* ── Mobile filter panel — bottom sheet (PRD v2) ────────────────────────── */
+/* Section labels — padding-top creates space inside the stElementContainer wrapper.
+   :has() in the media query adds margin-top on the wrapper itself. */
+.mob-section-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #9ca3af;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding-top: 0.5rem;
+  padding-bottom: 0.25rem;
+  margin: 0;
+  line-height: 1.4;
+  display: block;
+}
+
 @media (max-width: 768px) {
+  /* ── Sheet: fixed overlay. Streamlit forces display:block on this element,
+     so we use position:absolute on header/body/footer instead of flexbox. ── */
   .st-key-mob-filter-panel {
     position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    z-index: 1000 !important;
+    bottom: 0 !important; left: 0 !important; right: 0 !important; top: auto !important;
+    height: 80dvh !important; max-height: 80dvh !important;
+    border-radius: 20px 20px 0 0 !important;
     background: #13161f !important;
-    overflow-y: auto !important;
-    padding: 0.9rem 1rem 2.5rem 1rem !important;
-    margin: 0 !important;
-    border-radius: 0 !important;
-    border: none !important;
-    box-shadow: 0 0 0 200vw rgba(0,0,0,0.75) !important;
+    overflow: hidden !important;
+    z-index: 1000 !important;
+    margin: 0 !important; border: none !important; padding: 0 !important;
+    will-change: transform !important;
+    animation: mobSheetUp 0.32s cubic-bezier(0.32, 0.72, 0, 1) !important;
   }
-  /* Comfortable gap between panel elements */
-  .st-key-mob-filter-panel [data-testid="stVerticalBlock"] {
-    gap: 0.6rem !important;
+  .st-key-mob-filter-panel.mob-sheet-closing {
+    animation: mobSheetDown 0.2s ease-in forwards !important;
   }
-  /* X close button — small circle, top-right of the title row */
-  .st-key-mob-filter-panel .st-key-f-mob-close button {
-    background: transparent !important;
-    border: 1px solid #374151 !important;
-    border-radius: 50% !important;
-    color: #9ca3af !important;
-    font-size: 0.9rem !important;
-    height: 2rem !important;
-    width: 2rem !important;
-    min-width: 0 !important;
-    padding: 0 !important;
-    display: flex !important;
+  @keyframes mobSheetUp {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+  @keyframes mobSheetDown {
+    from { transform: translateY(0); }
+    to   { transform: translateY(100%); }
+  }
+
+  /* ── Header: pinned to top via absolute ── */
+  .st-key-mob-panel-header {
+    position: absolute !important;
+    top: 0 !important; left: 0 !important; right: 0 !important;
+    z-index: 10 !important;
+    background: #13161f !important;
+    padding: 0.85rem 1rem 0.65rem !important;
+    border-bottom: 1px solid #1f2937 !important;
+    box-sizing: border-box !important;
+  }
+  /* Force header columns horizontal on mobile */
+  .st-key-mob-panel-header [data-testid="stHorizontalBlock"] {
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
     align-items: center !important;
-    justify-content: center !important;
+    gap: 0 !important;
   }
-  .st-key-mob-filter-panel .st-key-f-mob-close button:hover {
-    border-color: #6b7280 !important;
-    color: #e2e8f0 !important;
+  .st-key-mob-panel-header [data-testid="stColumn"]:first-child {
+    flex: 1 1 auto !important; min-width: 0 !important; padding: 0 !important;
   }
-  /* Expander rows — dark card style */
-  .st-key-mob-filter-panel details {
-    background: #1e2536 !important;
-    border: 1px solid #2d3748 !important;
-    border-radius: 10px !important;
-    padding: 0.1rem 0.75rem !important;
+  .st-key-mob-panel-header [data-testid="stColumn"]:last-child {
+    flex: 0 0 52px !important; width: 52px !important;
+    min-width: 52px !important; max-width: 52px !important;
+    padding: 0 !important;
   }
-  .st-key-mob-filter-panel details summary {
-    color: #e2e8f0 !important;
-    font-weight: 600 !important;
-    font-size: 0.9rem !important;
-    padding: 0.55rem 0 !important;
-    cursor: pointer !important;
+  /* X button — white, no border, 44px touch target */
+  .st-key-f_mob_close button,
+  .st-key-f-mob-close button {
+    background: transparent !important;
+    border: none !important;
+    color: #ffffff !important;
+    font-size: 1.2rem !important;
+    height: 44px !important; width: 44px !important;
+    min-width: 0 !important; min-height: 0 !important;
+    line-height: 1 !important;
+    border-radius: 50% !important;
+    display: flex !important;
+    align-items: center !important; justify-content: center !important;
   }
-  .st-key-mob-filter-panel details svg {
-    fill: #9ca3af !important;
+  .st-key-f_mob_close button:hover,
+  .st-key-f-mob-close button:hover {
+    background: rgba(255,255,255,0.12) !important;
   }
-  /* Content inside open expanders */
-  .st-key-mob-filter-panel [data-testid="stExpanderDetails"] {
-    padding: 0.25rem 0 0.4rem 0 !important;
+
+  /* ── Body: fills between header (92px) and footer (96px) via absolute ── */
+  .st-key-mob-panel-body {
+    position: absolute !important;
+    top: 92px !important;
+    bottom: 96px !important;
+    left: 0 !important; right: 0 !important;
+    overflow-y: auto !important; overflow-x: hidden !important;
+    overscroll-behavior: contain !important;
+    padding: 0.75rem 1rem 1rem !important;
+    box-sizing: border-box !important;
   }
-  .st-key-mob-filter-panel [data-testid="stExpanderDetails"] [data-testid="stVerticalBlock"] {
+  /* stVerticalBlock gap between form elements */
+  .st-key-mob-panel-body [data-testid="stVerticalBlock"] {
     gap: 0.35rem !important;
   }
+  /* Use :has() to add top margin before section label containers */
+  .st-key-mob-panel-body [data-testid="stVerticalBlock"] > div:has(.mob-section-label) {
+    margin-top: 0.9rem !important;
+  }
+  /* Hide the "Sort by" label — placeholder text handles it */
+  .st-key-mob-panel-body [data-testid="stSelectbox"] label {
+    display: none !important;
+  }
+  /* Sort selectbox */
+  .st-key-mob-panel-body [data-testid="stSelectbox"] > div > div {
+    background: #1a1e2a !important;
+    border: 1px solid #2d3748 !important;
+    border-radius: 10px !important;
+    color: #e2e8f0 !important;
+    font-size: 0.9rem !important;
+  }
+  /* Services expander — dark card */
+  .st-key-mob-panel-body details {
+    background: #1a1e2a !important;
+    border: 1px solid #2d3748 !important;
+    border-radius: 10px !important;
+    padding: 0 0.75rem !important;
+  }
+  .st-key-mob-panel-body details summary {
+    color: #e2e8f0 !important;
+    font-weight: 600 !important;
+    font-size: 0.88rem !important;
+    padding: 0.6rem 0 !important;
+    cursor: pointer !important;
+  }
+  .st-key-mob-panel-body details svg { fill: #9ca3af !important; }
+  .st-key-mob-panel-body [data-testid="stExpanderDetails"] {
+    padding: 0.25rem 0 0.5rem 0 !important;
+  }
+  .st-key-mob-panel-body [data-testid="stExpanderDetails"] [data-testid="stVerticalBlock"] {
+    gap: 0.3rem !important;
+  }
+  /* Slider: bigger thumb, space above for value badge */
+  .st-key-mob-panel-body [data-testid="stSlider"] [role="slider"] {
+    width: 22px !important;
+    height: 22px !important;
+    border-radius: 50% !important;
+  }
+  .st-key-mob-panel-body [data-testid="stSlider"] {
+    padding-top: 0.6rem !important;
+  }
+
+  /* ── Footer: pinned to bottom via absolute ── */
+  .st-key-mob-panel-footer {
+    position: absolute !important;
+    bottom: 0 !important; left: 0 !important; right: 0 !important;
+    z-index: 10 !important;
+    background: #13161f !important;
+    padding: 0.75rem 1rem !important;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
+    border-top: 1px solid #1f2937 !important;
+    box-sizing: border-box !important;
+  }
+  /* Force footer columns horizontal, equal width */
+  .st-key-mob-panel-footer [data-testid="stHorizontalBlock"] {
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 0.5rem !important;
+    align-items: center !important;
+  }
+  .st-key-mob-panel-footer [data-testid="stColumn"] {
+    flex: 1 1 0 !important; min-width: 0 !important; padding: 0 !important;
+  }
+  /* Zero out all wrappers between stColumn and the <button> so no padding expands them */
+  .st-key-mob-panel-footer [data-testid="stColumn"] > div,
+  .st-key-mob-panel-footer [data-testid="stElementContainer"],
+  .st-key-mob-panel-footer [data-testid="stButton"] {
+    margin: 0 !important; padding: 0 !important;
+    width: 100% !important;
+  }
+  /* Both buttons: identical dimensions — max-height prevents primary's padding from bloating it */
+  .st-key-mob-panel-footer [data-testid="stBaseButton-primary"],
+  .st-key-mob-panel-footer [data-testid="stBaseButton-secondary"] {
+    height: 48px !important;
+    min-height: 48px !important;
+    max-height: 48px !important;
+    padding: 0 1rem !important;
+    line-height: 48px !important;
+    border-radius: 10px !important;
+    width: 100% !important;
+    font-size: 0.95rem !important;
+    font-weight: 600 !important;
+    box-sizing: border-box !important;
+    display: block !important;
+  }
+  /* Clear All — outlined */
+  .st-key-mob-panel-footer [data-testid="stBaseButton-secondary"] {
+    background: transparent !important;
+    border: 1.5px solid #4b5563 !important;
+    color: #d1d5db !important;
+  }
+
+  /* ── Active filter chips below the filter button ── */
+  .st-key-mob-chip-bar {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    padding: 0.25rem 0 0.35rem 0 !important;
+  }
+  .st-key-mob-chip-bar::-webkit-scrollbar { display: none !important; }
+  .st-key-mob-chip-bar [data-testid="stHorizontalBlock"] {
+    flex-wrap: nowrap !important;
+    gap: 0.35rem !important;
+    overflow-x: auto !important;
+  }
+  .st-key-mob-chip-bar [data-testid="stColumn"] {
+    flex: 0 0 auto !important;
+    min-width: fit-content !important;
+    width: auto !important;
+    padding: 0 !important;
+  }
+  .st-key-mob-chip-bar button {
+    background: #1a2540 !important;
+    border: 1px solid #4f8ef7 !important;
+    border-radius: 20px !important;
+    color: #7eb3f7 !important;
+    font-size: 0.78rem !important;
+    font-weight: 500 !important;
+    padding: 0.18rem 0.65rem !important;
+    height: auto !important;
+    min-height: 0 !important;
+    white-space: nowrap !important;
+    line-height: 1.5 !important;
+  }
+}
+/* Hide chip bar on desktop */
+@media (min-width: 769px) {
+  .st-key-mob-chip-bar { display: none !important; }
 }
 
 
