@@ -33,7 +33,14 @@ chai_seen = set(seen.get('chai_seen', []))
 noel_seen = set(seen.get('noel_seen', []))
 
 # In-process ML pipeline result cache + in-flight tracker
-_ml_cache: dict = {}
+# Pre-populated from data/ml_cache.json if it exists (built by precompute_ml.py)
+_ML_CACHE_PATH = os.path.join(BASE_DIR, 'data', 'ml_cache.json')
+if os.path.exists(_ML_CACHE_PATH):
+    with open(_ML_CACHE_PATH) as _f:
+        _ml_cache: dict = json.load(_f)
+    print(f"ML cache loaded: {len(_ml_cache)} pre-computed movies")
+else:
+    _ml_cache: dict = {}
 _ml_running: set = set()
 
 # Parents guide keyed by imdb_id
