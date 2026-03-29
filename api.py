@@ -181,6 +181,38 @@ def catalog():
     return jsonify(_cards)
 
 
+def _generate_narrative(result, person):
+    """Call Groq (non-streaming) to generate a Why narrative. Returns string or None."""
+    try:
+        groq_key = os.environ.get("GROQ_API_KEY", "")
+        if not groq_key:
+            return None
+        from groq import Groq
+        from ui_components import build_why_prompt
+        rec       = result.get("rec", {})
+        prompt    = build_why_prompt(
+            rec,
+            pred_score=result.get("pred_score", 5.0),
+            match_pct=result.get("match_pct", 50.0),
+            top_pos=result.get("top_pos", []),
+            top_neg=result.get("top_neg", []),
+            similar=result.get("similar") or {"title": "Unknown", "rating": 5.0},
+            vibe=result.get("vibe", 50.0),
+            person=person,
+        )
+        client   = Groq(api_key=groq_key)
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=350,
+            stream=False,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[Narrative] Error for {person}: {e}")
+        return None
+
+
 def _run_ml_pipeline(imdb_id, title):
     """
     Run Chai + Noel ML pipeline for a single movie.
@@ -228,11 +260,16 @@ def _run_ml_pipeline(imdb_id, title):
                 "matchPct": round(float(sim) * 100),
             }
 
+        chai_narrative = _generate_narrative(chai_result, "Chai")
+        noel_narrative = _generate_narrative(noel_result, "Noel")
+
         result = {
             "chai_drivers":       _tags_to_drivers(chai_result.get("tags", [])),
             "chai_closest_match": _similar_to_match(chai_result.get("similar")),
+            "chai_narrative":     chai_narrative,
             "noel_drivers":       _tags_to_drivers(noel_result.get("tags", [])),
             "noel_closest_match": _similar_to_match(noel_result.get("similar")),
+            "noel_narrative":     noel_narrative,
         }
         _ml_cache[imdb_id] = result
         print(f"[ML] Done: {len(result['chai_drivers'])} chai drivers, {len(result['noel_drivers'])} noel drivers")

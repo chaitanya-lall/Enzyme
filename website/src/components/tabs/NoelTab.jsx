@@ -1,5 +1,5 @@
 export default function NoelTab({ movie, mlData, mlLoading }) {
-  const noel = { ...(movie.noel || {}), ...(mlData ? { drivers: mlData.noel_drivers, closestMatch: mlData.noel_closest_match } : {}) };
+  const noel = { ...(movie.noel || {}), ...(mlData ? { drivers: mlData.noel_drivers, closestMatch: mlData.noel_closest_match, narrative: mlData.noel_narrative } : {}) };
   const score = movie.noelScore;
   const color = score >= 85 ? '#ffb4aa' : score >= 70 ? '#b1c8ed' : '#8b919d';
 
@@ -68,8 +68,12 @@ export default function NoelTab({ movie, mlData, mlLoading }) {
         </div>
       </div>
 
-      {/* Narrative — only shown when available */}
-      {noel.narrative && (
+      {/* Narrative */}
+      {mlLoading && !noel.narrative ? (
+        <Section label="Why This Score">
+          <p style={{ fontSize: 12, color: '#484847' }}>Analyzing…</p>
+        </Section>
+      ) : noel.narrative && (
         <Section label="Why This Score">
           <div style={{
             background: '#1c1b1b', borderRadius: 12,

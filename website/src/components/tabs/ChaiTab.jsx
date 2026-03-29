@@ -1,5 +1,5 @@
 export default function ChaiTab({ movie, mlData, mlLoading }) {
-  const chai = { ...(movie.chai || {}), ...(mlData ? { drivers: mlData.chai_drivers, closestMatch: mlData.chai_closest_match } : {}) };
+  const chai = { ...(movie.chai || {}), ...(mlData ? { drivers: mlData.chai_drivers, closestMatch: mlData.chai_closest_match, narrative: mlData.chai_narrative } : {}) };
   const score = movie.chaiScore;
   const color = score >= 85 ? '#a4c9ff' : score >= 70 ? '#b1c8ed' : '#8b919d';
 
@@ -68,8 +68,12 @@ export default function ChaiTab({ movie, mlData, mlLoading }) {
         </div>
       </div>
 
-      {/* Narrative — only shown when available */}
-      {chai.narrative && (
+      {/* Narrative */}
+      {mlLoading && !chai.narrative ? (
+        <Section label="Why This Score">
+          <p style={{ fontSize: 12, color: '#484847' }}>Analyzing…</p>
+        </Section>
+      ) : chai.narrative && (
         <Section label="Why This Score">
           <div style={{
             background: '#1c1b1b', borderRadius: 12,
