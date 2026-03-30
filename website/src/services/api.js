@@ -17,3 +17,9 @@ export async function fetchMovieML(id) {
   if (!res.ok) throw new Error('ML fetch failed');
   return res.json();
 }
+
+export async function searchMovies(q) {
+  const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(q)}`);
+  if (!res.ok) throw new Error('Search failed');
+  return res.json();
+}

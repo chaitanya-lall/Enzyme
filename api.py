@@ -3,8 +3,9 @@ Enzyme REST API — serves catalog data from parquet + parents guide to the Reac
 Run: python3 api.py
 Port: 5001
 """
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
+import requests as http_requests
 import pandas as pd
 import json
 import os
@@ -326,6 +327,56 @@ def movie_ml(imdb_id):
         t.start()
 
     return jsonify({'status': 'running'})
+
+
+@app.route('/api/search')
+def search():
+    """Search OMDb for any movie by title. Returns up to 10 results, enriched with catalog scores if available."""
+    q = request.args.get('q', '').strip()
+    if not q:
+        return jsonify([])
+
+    from config import OMDB_SEARCH_KEYS
+    keys = OMDB_SEARCH_KEYS
+    if not keys:
+        return jsonify({'error': 'No OMDb keys configured'}), 500
+
+    # Try each key until one works
+    data = None
+    for key in keys:
+        try:
+            resp = http_requests.get('https://www.omdbapi.com/', params={'s': q, 'type': 'movie', 'apikey': key}, timeout=5)
+            result = resp.json()
+            if result.get('Response') == 'True':
+                data = result.get('Search', [])
+                break
+        except Exception:
+            continue
+
+    if data is None:
+        return jsonify([])
+
+    # Build imdb_id → catalog row lookup for score enrichment
+    catalog_lookup = {row['imdb_id']: row for _, row in df.iterrows()}
+
+    results = []
+    for item in data[:10]:
+        iid = item.get('imdbID', '')
+        row = catalog_lookup.get(iid)
+        chai_pct = _safe(row['chai_pct']) if row is not None else None
+        noel_pct = _safe(row['noel_pct']) if row is not None else None
+        results.append({
+            'id':        iid,
+            'title':     item.get('Title', ''),
+            'year':      item.get('Year', ''),
+            'poster':    item.get('Poster', '') if item.get('Poster') != 'N/A' else '',
+            'chaiScore': round(chai_pct) if chai_pct is not None else None,
+            'noelScore': round(noel_pct) if noel_pct is not None else None,
+            'chaiSeen':  iid in chai_seen,
+            'noelSeen':  iid in noel_seen,
+        })
+
+    return jsonify(results)
 
 
 @app.route('/api/health')

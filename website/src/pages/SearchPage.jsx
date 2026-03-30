@@ -1,24 +1,24 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchCatalog } from '../services/api';
+import { searchMovies } from '../services/api';
 
 export default function SearchPage() {
   const [query, setQuery] = useState('');
-  const [allMovies, setAllMovies] = useState([]);
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // Debounced search — fires 400ms after user stops typing
   useEffect(() => {
-    fetchCatalog().then(setAllMovies).catch(() => {});
-  }, []);
-
-  const results = useMemo(() => {
-    if (!query.trim()) return [];
-    const q = query.toLowerCase();
-    return allMovies.filter(m =>
-      m.title.toLowerCase().includes(q) ||
-      (m.director && m.director.toLowerCase().includes(q))
-    ).slice(0, 30);
-  }, [allMovies, query]);
+    if (!query.trim()) { setResults([]); return; }
+    const timer = setTimeout(() => {
+      setLoading(true);
+      searchMovies(query)
+        .then(data => { setResults(data); setLoading(false); })
+        .catch(() => setLoading(false));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [query]);
 
   return (
     <div className="page" style={{ padding: '20px 16px' }}>
@@ -48,15 +48,18 @@ export default function SearchPage() {
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Search films, directors…"
+          placeholder="Search any film…"
           autoFocus
           style={{
             flex: 1, background: 'none', border: 'none', outline: 'none',
             color: '#e5e2e1', fontSize: 14, fontFamily: 'inherit',
           }}
         />
-        {query && (
-          <button onClick={() => setQuery('')} style={{ border: 'none', background: 'none', cursor: 'pointer', display: 'flex', padding: 0 }}>
+        {loading && (
+          <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#8b919d', animation: 'spin 1s linear infinite' }}>progress_activity</span>
+        )}
+        {query && !loading && (
+          <button onClick={() => { setQuery(''); setResults([]); }} style={{ border: 'none', background: 'none', cursor: 'pointer', display: 'flex', padding: 0 }}>
             <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#8b919d' }}>close</span>
           </button>
         )}
@@ -71,7 +74,7 @@ export default function SearchPage() {
         </div>
       )}
 
-      {query.trim() && results.length === 0 && allMovies.length > 0 && (
+      {query.trim() && !loading && results.length === 0 && (
         <p style={{ color: '#484847', fontSize: 13, textAlign: 'center', marginTop: 40 }}>
           No films found for "{query}"
         </p>
@@ -96,36 +99,39 @@ function SearchRow({ movie, onClick }) {
       onMouseEnter={e => e.currentTarget.style.background = '#1c1b1b'}
       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
     >
-      {/* Poster thumbnail */}
       <img
         src={movie.poster}
         alt={movie.title}
         style={{ width: 44, height: 66, objectFit: 'cover', borderRadius: 6, flexShrink: 0, background: '#262625' }}
         onError={e => { e.target.style.display = 'none'; }}
       />
-
-      {/* Info */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ fontSize: 14, fontWeight: 600, color: '#e5e2e1', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {movie.title}
         </p>
-        <p style={{ fontSize: 12, color: '#8b919d' }}>
-          {movie.year}{movie.rating && movie.rating !== 'N/A' ? ` · ${movie.rating}` : ''}
-        </p>
+        <p style={{ fontSize: 12, color: '#8b919d' }}>{movie.year}</p>
       </div>
-
-      {/* Scores */}
       <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
-        {movie.chaiScore != null && (
+        {movie.chaiScore != null ? (
           <div style={{ textAlign: 'center' }}>
             <p style={{ fontSize: 14, fontWeight: 700, color: chaiColor, lineHeight: 1 }}>{movie.chaiScore}%</p>
             <p style={{ fontSize: 9, color: '#8b919d', letterSpacing: '0.04em' }}>CHAI</p>
           </div>
+        ) : (
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: '#484847', lineHeight: 1 }}>—</p>
+            <p style={{ fontSize: 9, color: '#484847', letterSpacing: '0.04em' }}>CHAI</p>
+          </div>
         )}
-        {movie.noelScore != null && (
+        {movie.noelScore != null ? (
           <div style={{ textAlign: 'center' }}>
             <p style={{ fontSize: 14, fontWeight: 700, color: noelColor, lineHeight: 1 }}>{movie.noelScore}%</p>
             <p style={{ fontSize: 9, color: '#8b919d', letterSpacing: '0.04em' }}>NOEL</p>
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: '#484847', lineHeight: 1 }}>—</p>
+            <p style={{ fontSize: 9, color: '#484847', letterSpacing: '0.04em' }}>NOEL</p>
           </div>
         )}
       </div>
