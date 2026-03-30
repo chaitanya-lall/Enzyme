@@ -296,15 +296,26 @@ def movie_detail(imdb_id):
     if not rows.empty:
         return jsonify(_row_to_detail(rows.iloc[0]))
 
-    # Not in catalog — fetch from OMDb using the website key
-    key = os.environ.get('OMDB_WEBSITE_KEY', '')
-    if not key:
+    # Not in catalog — fetch from OMDb
+    from config import OMDB_SEARCH_KEYS
+    website_key = os.environ.get('OMDB_WEBSITE_KEY', '')
+    keys = ([website_key] if website_key else []) + OMDB_SEARCH_KEYS
+    if not keys:
+        return jsonify({'error': 'Not found'}), 404
+    omdb_data = None
+    for key in keys:
+        try:
+            resp = http_requests.get('https://www.omdbapi.com/', params={'i': imdb_id, 'plot': 'full', 'apikey': key}, timeout=5)
+            d = resp.json()
+            if d.get('Response') == 'True':
+                omdb_data = d
+                break
+        except Exception:
+            continue
+    if omdb_data is None:
         return jsonify({'error': 'Not found'}), 404
     try:
-        resp = http_requests.get('https://www.omdbapi.com/', params={'i': imdb_id, 'plot': 'full', 'apikey': key}, timeout=5)
-        data = resp.json()
-        if data.get('Response') != 'True':
-            return jsonify({'error': 'Not found'}), 404
+        data = omdb_data
         genre_list = [g.strip() for g in data.get('Genre', '').split(',') if g.strip() and g.strip() != 'N/A']
         cast = [a.strip() for a in data.get('Actors', '').split(',') if a.strip() and a.strip() != 'N/A']
         runtime_str = data.get('Runtime', 'N/A')
@@ -378,18 +389,22 @@ def search():
     if not q:
         return jsonify([])
 
-    key = os.environ.get('OMDB_WEBSITE_KEY', '')
-    if not key:
-        return jsonify({'error': 'OMDB_WEBSITE_KEY not configured'}), 500
+    from config import OMDB_SEARCH_KEYS
+    website_key = os.environ.get('OMDB_WEBSITE_KEY', '')
+    keys = ([website_key] if website_key else []) + OMDB_SEARCH_KEYS
+    if not keys:
+        return jsonify([])
 
     data = None
-    try:
-        resp = http_requests.get('https://www.omdbapi.com/', params={'s': q, 'type': 'movie', 'apikey': key}, timeout=5)
-        result = resp.json()
-        if result.get('Response') == 'True':
-            data = result.get('Search', [])
-    except Exception:
-        pass
+    for key in keys:
+        try:
+            resp = http_requests.get('https://www.omdbapi.com/', params={'s': q, 'type': 'movie', 'apikey': key}, timeout=5)
+            result = resp.json()
+            if result.get('Response') == 'True':
+                data = result.get('Search', [])
+                break
+        except Exception:
+            continue
 
     if data is None:
         return jsonify([])
