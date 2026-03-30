@@ -36,12 +36,16 @@ export default function DetailPage() {
     if (!movie) return;
     let interval;
     const poll = () => {
-      fetchMovieML(id)
+      fetchMovieML(id, movie.title)
         .then(data => {
           if (data.status === 'done') {
             setMlData(data);
             setMlStatus('done');
             clearInterval(interval);
+          } else if (data.status === 'partial') {
+            // Drivers ready, narrative still generating — show data but keep polling
+            setMlData(data);
+            setMlStatus('running');
           } else if (data.status === 'error') {
             setMlStatus('error');
             clearInterval(interval);

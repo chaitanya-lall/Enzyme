@@ -9,7 +9,7 @@ const GENRES = [
 const SERVICES = ['All', 'Netflix', 'Hulu'];
 
 export default function FilterDrawer({ isOpen, onClose, filters, onChange, yearMin, yearMax }) {
-  const YEAR_MIN = yearMin ?? 1990;
+  const YEAR_MIN = yearMin ?? 1950;
   const YEAR_MAX = yearMax ?? 2026;
 
   const [localFilters, setLocalFilters] = useState(filters);

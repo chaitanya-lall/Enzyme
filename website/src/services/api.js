@@ -12,8 +12,9 @@ export async function fetchMovie(id) {
   return res.json();
 }
 
-export async function fetchMovieML(id) {
-  const res = await fetch(`${API_BASE}/api/movie/${encodeURIComponent(id)}/ml`);
+export async function fetchMovieML(id, title) {
+  const params = title ? `?title=${encodeURIComponent(title)}` : '';
+  const res = await fetch(`${API_BASE}/api/movie/${encodeURIComponent(id)}/ml${params}`);
   if (!res.ok) throw new Error('ML fetch failed');
   return res.json();
 }

@@ -3,7 +3,7 @@ import MovieCard from '../components/MovieCard';
 import FilterDrawer from '../components/FilterDrawer';
 import { fetchCatalog } from '../services/api';
 
-const YEAR_MIN = 1990;
+const YEAR_MIN = 1950;
 const YEAR_MAX = 2026;
 const DEFAULT_FILTERS = {
   genre: 'All', service: 'All', sort: 'chai',
