@@ -19,7 +19,6 @@ export default function RecommendPage() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(CARDS_PER_PAGE);
-  const [query, setQuery] = useState('');
 
   useEffect(() => {
     fetchCatalog()
@@ -29,14 +28,6 @@ export default function RecommendPage() {
 
   const filtered = useMemo(() => {
     let list = [...allMovies];
-
-    if (query.trim()) {
-      const q = query.toLowerCase();
-      list = list.filter(m =>
-        m.title.toLowerCase().includes(q) ||
-        (m.director && m.director.toLowerCase().includes(q))
-      );
-    }
 
     if (filters.genre !== 'All')
       list = list.filter(m => m.genre.includes(filters.genre));
@@ -64,7 +55,7 @@ export default function RecommendPage() {
     });
 
     return list;
-  }, [allMovies, filters, query]);
+  }, [allMovies, filters]);
 
   const visible = filtered.slice(0, visibleCount);
   const hasMore = visibleCount < filtered.length;
@@ -177,32 +168,6 @@ export default function RecommendPage() {
         </button>
       </div>
 
-      {/* Search bar */}
-      <div style={{ padding: '0 16px 12px' }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          background: '#1c1b1b', borderRadius: 12,
-          border: '1px solid #353534', padding: '10px 14px',
-        }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#8b919d', flexShrink: 0 }}>search</span>
-          <input
-            type="text"
-            value={query}
-            onChange={e => { setQuery(e.target.value); setVisibleCount(CARDS_PER_PAGE); }}
-            placeholder="Search films, directors…"
-            style={{
-              flex: 1, background: 'none', border: 'none', outline: 'none',
-              color: '#e5e2e1', fontSize: 14, fontFamily: 'inherit',
-            }}
-          />
-          {query && (
-            <button onClick={() => setQuery('')} style={{ border: 'none', background: 'none', cursor: 'pointer', display: 'flex', padding: 0 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#8b919d' }}>close</span>
-            </button>
-          )}
-        </div>
-      </div>
-
       {/* Active filter pills */}
       {activeFilterCount > 0 && (
         <div style={{ padding: '0 16px 12px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -260,7 +225,7 @@ export default function RecommendPage() {
           </span>
           <p style={{ color: '#8b919d', fontSize: 14 }}>No films match your filters.</p>
           <button
-            onClick={() => { setFilters(DEFAULT_FILTERS); setQuery(''); }}
+            onClick={() => { setFilters(DEFAULT_FILTERS); }}
             style={{
               marginTop: 16, padding: '8px 20px',
               background: 'rgba(164,201,255,0.12)', color: '#a4c9ff',
