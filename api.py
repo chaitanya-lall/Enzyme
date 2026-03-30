@@ -336,22 +336,18 @@ def search():
     if not q:
         return jsonify([])
 
-    from config import OMDB_SEARCH_KEYS
-    keys = OMDB_SEARCH_KEYS
-    if not keys:
-        return jsonify({'error': 'No OMDb keys configured'}), 500
+    key = os.environ.get('OMDB_WEBSITE_KEY', '')
+    if not key:
+        return jsonify({'error': 'OMDB_WEBSITE_KEY not configured'}), 500
 
-    # Try each key until one works
     data = None
-    for key in keys:
-        try:
-            resp = http_requests.get('https://www.omdbapi.com/', params={'s': q, 'type': 'movie', 'apikey': key}, timeout=5)
-            result = resp.json()
-            if result.get('Response') == 'True':
-                data = result.get('Search', [])
-                break
-        except Exception:
-            continue
+    try:
+        resp = http_requests.get('https://www.omdbapi.com/', params={'s': q, 'type': 'movie', 'apikey': key}, timeout=5)
+        result = resp.json()
+        if result.get('Response') == 'True':
+            data = result.get('Search', [])
+    except Exception:
+        pass
 
     if data is None:
         return jsonify([])
