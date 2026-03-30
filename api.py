@@ -311,11 +311,8 @@ def movie_ml(imdb_id):
     Returns {"status": "done", ...drivers/match...} or {"status": "running"}.
     Kicks off a background thread on first call.
     """
-    if imdb_id in _ml_cache:
-        result = _ml_cache[imdb_id]
-        if result is None:
-            return jsonify({'status': 'error'})
-        return jsonify({'status': 'done', **result})
+    if imdb_id in _ml_cache and _ml_cache[imdb_id] is not None:
+        return jsonify({'status': 'done', **_ml_cache[imdb_id]})
 
     if imdb_id not in _ml_running:
         rows = df[df['imdb_id'] == imdb_id]
