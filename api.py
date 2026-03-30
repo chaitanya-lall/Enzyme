@@ -270,9 +270,11 @@ def _run_ml_pipeline(imdb_id, title):
         noel_narrative = _generate_narrative(noel_result, "Noel")
 
         result = {
+            "chai_score":         round(float(chai_result.get("match_pct", 0))),
             "chai_drivers":       _tags_to_drivers(chai_result.get("tags", [])),
             "chai_closest_match": _similar_to_match(chai_result.get("similar")),
             "chai_narrative":     chai_narrative,
+            "noel_score":         round(float(noel_result.get("match_pct", 0))),
             "noel_drivers":       _tags_to_drivers(noel_result.get("tags", [])),
             "noel_closest_match": _similar_to_match(noel_result.get("similar")),
             "noel_narrative":     noel_narrative,
