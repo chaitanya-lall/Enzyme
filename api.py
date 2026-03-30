@@ -291,11 +291,56 @@ def _run_ml_pipeline(imdb_id, title):
 
 @app.route('/api/movie/<imdb_id>')
 def movie_detail(imdb_id):
-    """Returns basic parquet data immediately — no ML pipeline."""
+    """Returns basic parquet data immediately. Falls back to OMDb for movies not in catalog."""
     rows = df[df['imdb_id'] == imdb_id]
-    if rows.empty:
+    if not rows.empty:
+        return jsonify(_row_to_detail(rows.iloc[0]))
+
+    # Not in catalog — fetch from OMDb using the website key
+    key = os.environ.get('OMDB_WEBSITE_KEY', '')
+    if not key:
         return jsonify({'error': 'Not found'}), 404
-    return jsonify(_row_to_detail(rows.iloc[0]))
+    try:
+        resp = http_requests.get('https://www.omdbapi.com/', params={'i': imdb_id, 'plot': 'full', 'apikey': key}, timeout=5)
+        data = resp.json()
+        if data.get('Response') != 'True':
+            return jsonify({'error': 'Not found'}), 404
+        genre_list = [g.strip() for g in data.get('Genre', '').split(',') if g.strip() and g.strip() != 'N/A']
+        cast = [a.strip() for a in data.get('Actors', '').split(',') if a.strip() and a.strip() != 'N/A']
+        runtime_str = data.get('Runtime', 'N/A')
+        runtime_min = None
+        if runtime_str and runtime_str != 'N/A':
+            try:
+                runtime_min = int(runtime_str.replace(' min', ''))
+            except Exception:
+                pass
+        return jsonify({
+            'id':          imdb_id,
+            'title':       data.get('Title', ''),
+            'year':        int(data['Year'][:4]) if data.get('Year', 'N/A') != 'N/A' else None,
+            'genre':       genre_list,
+            'runtime':     _format_runtime(runtime_min),
+            'rating':      data.get('Rated', 'N/A'),
+            'poster':      data.get('Poster', '') if data.get('Poster') != 'N/A' else '',
+            'chaiScore':   None,
+            'noelScore':   None,
+            'imdbScore':   float(data['imdbRating']) if data.get('imdbRating', 'N/A') != 'N/A' else None,
+            'service':     None,
+            'chaiSeen':    imdb_id in chai_seen,
+            'noelSeen':    imdb_id in noel_seen,
+            'synopsis':    data.get('Plot', ''),
+            'director':    data.get('Director', 'N/A'),
+            'cast':        cast,
+            'rtScore':     None,
+            'metaScore':   int(data['Metascore']) if data.get('Metascore', 'N/A') != 'N/A' else None,
+            'awards':      data.get('Awards') if data.get('Awards', 'N/A') != 'N/A' else None,
+            'parentalTags': {'sex': 0, 'violence': 0, 'profanity': 0, 'drugs': 0, 'frightening': 0},
+            'chai':        {'confidence': None, 'narrative': None, 'drivers': [], 'closestMatch': None},
+            'noel':        {'confidence': None, 'narrative': None, 'drivers': [], 'closestMatch': None},
+        })
+    except Exception as e:
+        print(f"[OMDb fallback] Error for {imdb_id}: {e}")
+        return jsonify({'error': 'Not found'}), 404
 
 
 def _run_ml_pipeline_bg(imdb_id, title):
