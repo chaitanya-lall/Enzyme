@@ -15,12 +15,33 @@ ETA: ~5-8 hours for all 3209 movies (with narratives).
 """
 import sys
 import os
+import re
 import json
 import math
 import time
 import argparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# ── Load .streamlit/secrets.toml into env vars (so OMDb/Groq keys work
+#    when this script is run directly, not via `streamlit run`) ─────────────
+def _load_secrets():
+    secrets_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                '.streamlit', 'secrets.toml')
+    if not os.path.exists(secrets_path):
+        return
+    with open(secrets_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#') or line.startswith('['):
+                continue
+            m = re.match(r'^(\w+)\s*=\s*["\']?(.*?)["\']?\s*$', line)
+            if m:
+                key, val = m.group(1), m.group(2)
+                if key not in os.environ:   # don't override real env vars
+                    os.environ[key] = val
+
+_load_secrets()
 
 import pandas as pd
 
@@ -105,7 +126,7 @@ def main():
     else:
         cache = {}
 
-    todo = [(iid, title) for iid, title in movies if iid not in cache]
+    todo = [(iid, title) for iid, title in movies if iid not in cache or cache[iid] is None]
     if args.limit:
         todo = todo[:args.limit]
 
