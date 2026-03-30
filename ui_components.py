@@ -909,7 +909,7 @@ def _mobile_filters_panel():
     """
     _mob_keys = [
         "f_mob_svc_netflix", "f_mob_svc_max", "f_mob_svc_disney",
-        "f_mob_svc_hulu", "f_mob_svc_apple", "f_mob_svc_peacock", "f_mob_svc_paramount", "f_mob_svc_tubi",
+        "f_mob_svc_hulu", "f_mob_svc_apple", "f_mob_svc_peacock", "f_mob_svc_paramount",
         "f_mob_type_movies", "f_mob_type_tv",
         "f_mob_w_chai_seen", "f_mob_w_chai_not_seen", "f_mob_w_noel_seen", "f_mob_w_noel_not_seen",
         "f_mob_imdb", "f_mob_yr", "f_sort_mob",
@@ -1006,7 +1006,6 @@ def _mobile_filters_panel():
                 st.checkbox("Apple TV+",  key="f_mob_svc_apple")
                 st.checkbox("Peacock",    key="f_mob_svc_peacock")
                 st.checkbox("Paramount+", key="f_mob_svc_paramount")
-                st.checkbox("Tubi",       key="f_mob_svc_tubi")
             # Content Type — fully expanded
             st.markdown("<p class='mob-section-label'>Content Type</p>", unsafe_allow_html=True)
             st.checkbox("Movies",   key="f_mob_type_movies")
@@ -1080,7 +1079,6 @@ def _render_catalog_card(item) -> None:
         "apple":     "#555555",
         "peacock":   "#FF6B00",
         "paramount": "#0064FF",
-        "tubi":      "#FF4500",
     }
     svc_color  = svc_colors.get(service, "#444")
     _svc_labels = {

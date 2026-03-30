@@ -12,7 +12,7 @@ Requirements:
 
 What it does:
     1. Fetches title lists from Watchmode API (US region) for:
-       Netflix, Max, Disney+, Hulu, Apple TV+, Peacock, Paramount+, Tubi
+       Netflix, Max, Disney+, Hulu, Apple TV+, Peacock, Paramount+
     2. Fetches OMDb metadata for each title (rotating across API keys)
     3. Batch-encodes all plot text with SentenceTransformer
     4. Vectorized ML scoring for both Chai and Noel
@@ -155,8 +155,6 @@ def get_source_ids(api_key: str) -> dict[str, int]:
             result.setdefault("peacock", s["id"])
         elif "paramount" in name and ("plus" in name or "+" in name):
             result.setdefault("paramount", s["id"])
-        elif "tubi" in name:
-            result.setdefault("tubi", s["id"])
     return result
 
 
