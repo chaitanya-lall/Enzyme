@@ -227,7 +227,7 @@ def _run_ml_pipeline(imdb_id, title):
     Returns dict with chai_tags, chai_similar, noel_tags, noel_similar, or None on error.
     Results are cached in _ml_cache.
     """
-    if imdb_id in _ml_cache:
+    if imdb_id in _ml_cache and _ml_cache[imdb_id] is not None:
         return _ml_cache[imdb_id]
 
     try:
@@ -364,17 +364,41 @@ def _run_ml_pipeline_bg(imdb_id, title):
 def movie_ml(imdb_id):
     """
     Async ML endpoint. Call after the basic detail loads.
-    Returns {"status": "done", ...drivers/match...} or {"status": "running"}.
-    Kicks off a background thread on first call.
+    Returns {"status": "done"|"partial"|"running"|"error", ...drivers/match...}.
+    "partial" = drivers ready but narrative still generating (keep polling).
+    Accepts optional ?title= for movies not in the streaming catalog.
     """
     if imdb_id in _ml_cache and _ml_cache[imdb_id] is not None:
-        return jsonify({'status': 'done', **_ml_cache[imdb_id]})
+        result = _ml_cache[imdb_id]
+        has_narrative = result.get('chai_narrative') or result.get('noel_narrative')
+        if not has_narrative:
+            # Drivers cached but no narrative — re-run pipeline in background
+            if imdb_id not in _ml_running:
+                rows = df[df['imdb_id'] == imdb_id]
+                title_param = request.args.get('title', '').strip()
+                if not rows.empty:
+                    title = str(rows.iloc[0]['title'])
+                elif title_param:
+                    title = title_param
+                else:
+                    # Can't regenerate narrative without a title — return partial as-is
+                    return jsonify({'status': 'partial', **result})
+                del _ml_cache[imdb_id]  # Clear so pipeline runs fresh
+                _ml_running.add(imdb_id)
+                t = threading.Thread(target=_run_ml_pipeline_bg, args=(imdb_id, title), daemon=True)
+                t.start()
+            return jsonify({'status': 'partial', **result})
+        return jsonify({'status': 'done', **result})
 
     if imdb_id not in _ml_running:
         rows = df[df['imdb_id'] == imdb_id]
-        if rows.empty:
+        title_param = request.args.get('title', '').strip()
+        if not rows.empty:
+            title = str(rows.iloc[0]['title'])
+        elif title_param:
+            title = title_param
+        else:
             return jsonify({'status': 'error'})
-        title = str(rows.iloc[0]['title'])
         _ml_running.add(imdb_id)
         t = threading.Thread(target=_run_ml_pipeline_bg, args=(imdb_id, title), daemon=True)
         t.start()
