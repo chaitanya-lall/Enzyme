@@ -1,6 +1,6 @@
 export default function ChaiTab({ movie, mlData, mlLoading }) {
   const chai = { ...(movie.chai || {}), ...(mlData ? { drivers: mlData.chai_drivers, closestMatch: mlData.chai_closest_match, narrative: mlData.chai_narrative } : {}) };
-  const score = movie.chaiScore;
+  const score = movie.chaiScore ?? mlData?.chai_score ?? null;
   const color = score >= 85 ? '#a4c9ff' : score >= 70 ? '#b1c8ed' : '#8b919d';
 
   const r = 42, cx = 56, cy = 56;

@@ -1,6 +1,6 @@
 export default function NoelTab({ movie, mlData, mlLoading }) {
   const noel = { ...(movie.noel || {}), ...(mlData ? { drivers: mlData.noel_drivers, closestMatch: mlData.noel_closest_match, narrative: mlData.noel_narrative } : {}) };
-  const score = movie.noelScore;
+  const score = movie.noelScore ?? mlData?.noel_score ?? null;
   const color = score >= 85 ? '#ffb4aa' : score >= 70 ? '#b1c8ed' : '#8b919d';
 
   const r = 42, cx = 56, cy = 56;

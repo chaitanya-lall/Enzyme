@@ -169,9 +169,9 @@ export default function DetailPage() {
         background: '#1c1b1b',
         borderBottom: '1px solid #262625',
       }}>
-        <ScoreStrip label="Chai" score={movie.chaiScore} color="#a4c9ff" seen={movie.chaiSeen} />
+        <ScoreStrip label="Chai" score={movie.chaiScore ?? mlData?.chai_score ?? null} color="#a4c9ff" seen={movie.chaiSeen} />
         <div style={{ width: 1, background: '#262625', flexShrink: 0 }} />
-        <ScoreStrip label="Noel" score={movie.noelScore} color="#ffb4aa" seen={movie.noelSeen} />
+        <ScoreStrip label="Noel" score={movie.noelScore ?? mlData?.noel_score ?? null} color="#ffb4aa" seen={movie.noelSeen} />
       </div>
 
       {/* Chrome Tab bar */}
