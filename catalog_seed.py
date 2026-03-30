@@ -1,8 +1,8 @@
 """
-catalog_seed.py  —  Populate data/catalog_data.parquet with Netflix & Max content.
+catalog_seed.py  —  Populate data/catalog_data.parquet with streaming content.
 
 Usage:
-    python catalog_seed.py            # Full pull of Netflix + Max US titles
+    python catalog_seed.py            # Full pull of all US streaming services
     python catalog_seed.py --limit 50 # Cap at N titles per service (for testing)
     python catalog_seed.py --skip-urls # Skip per-title streaming URL fetch (saves quota)
 
@@ -11,7 +11,8 @@ Requirements:
         WATCHMODE_API_KEY = "your_key_here"
 
 What it does:
-    1. Fetches Netflix + Max title lists from Watchmode API (US region)
+    1. Fetches title lists from Watchmode API (US region) for:
+       Netflix, Max, Disney+, Hulu, Apple TV+, Peacock, Paramount+, Tubi
     2. Fetches OMDb metadata for each title (rotating across API keys)
     3. Batch-encodes all plot text with SentenceTransformer
     4. Vectorized ML scoring for both Chai and Noel
@@ -45,6 +46,7 @@ from predict import (
     NUMERIC_COLS,
 )
 from predict_noel import _load_all as _load_all_noel
+from rt_enrichment import fetch_rt_data
 from tag_features import ALL_TAG_COLS
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -153,6 +155,8 @@ def get_source_ids(api_key: str) -> dict[str, int]:
             result.setdefault("peacock", s["id"])
         elif "paramount" in name and ("plus" in name or "+" in name):
             result.setdefault("paramount", s["id"])
+        elif "tubi" in name:
+            result.setdefault("tubi", s["id"])
     return result
 
 
@@ -287,9 +291,12 @@ def _build_features_catalog(rec: dict, artifacts: dict,
     actor_stats    = artifacts.get("actor_stats",    {})
     studio_stats   = artifacts.get("studio_stats",   {})
     director1 = str(rec.get("Director") or "").split(",")[0].strip()
-    actor1    = str(rec.get("Actors")   or "").split(",")[0].strip()
-    studio    = str(rec.get("Production") or "").strip() or "Unknown"
-    if studio == "N/A":
+    actor1    = (
+        str(rec.get("Actors_RT", "") or "").split(",")[0].strip()
+        or str(rec.get("Actors", "") or "").split(",")[0].strip()
+    )
+    studio    = (str(rec.get("Studio", "") or "") or str(rec.get("Production", "") or "")).strip()
+    if not studio or studio in ("N/A",):
         studio = "Unknown"
     d = director_stats.get(director1, {})
     a = actor_stats.get(actor1, {})
@@ -626,6 +633,18 @@ def run_seed(limit_per_service: int = 0,
         rec["imdbID"]       = iid
         rec["service"]      = service_map.get(iid, "unknown")
         rec["watchmode_id"] = watchmode_id_map.get(iid)
+        # RT enrichment — mirrors predict.py so catalog scores match search scores
+        try:
+            rt_year = int(str(rec.get("Year") or 2000).split(".")[0])
+            rt_data = fetch_rt_data(rec["Title"], rt_year, sleep=True)
+        except Exception:
+            rt_data = None
+        if rt_data:
+            rec["Actors_RT"] = ", ".join(rt_data["cast_top5"])
+            rec["Studio"]    = rt_data["studio"] or rec.get("Production", "") or ""
+        else:
+            rec["Actors_RT"] = ""
+            rec["Studio"]    = rec.get("Production", "") or ""
         enriched.append(rec)
 
     if not enriched:

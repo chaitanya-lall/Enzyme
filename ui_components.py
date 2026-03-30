@@ -909,7 +909,7 @@ def _mobile_filters_panel():
     """
     _mob_keys = [
         "f_mob_svc_netflix", "f_mob_svc_max", "f_mob_svc_disney",
-        "f_mob_svc_hulu", "f_mob_svc_apple", "f_mob_svc_peacock", "f_mob_svc_paramount",
+        "f_mob_svc_hulu", "f_mob_svc_apple", "f_mob_svc_peacock", "f_mob_svc_paramount", "f_mob_svc_tubi",
         "f_mob_type_movies", "f_mob_type_tv",
         "f_mob_w_chai_seen", "f_mob_w_chai_not_seen", "f_mob_w_noel_seen", "f_mob_w_noel_not_seen",
         "f_mob_imdb", "f_mob_yr", "f_sort_mob",
@@ -1006,6 +1006,7 @@ def _mobile_filters_panel():
                 st.checkbox("Apple TV+",  key="f_mob_svc_apple")
                 st.checkbox("Peacock",    key="f_mob_svc_peacock")
                 st.checkbox("Paramount+", key="f_mob_svc_paramount")
+                st.checkbox("Tubi",       key="f_mob_svc_tubi")
             # Content Type — fully expanded
             st.markdown("<p class='mob-section-label'>Content Type</p>", unsafe_allow_html=True)
             st.checkbox("Movies",   key="f_mob_type_movies")
@@ -1071,12 +1072,26 @@ def _render_catalog_card(item) -> None:
             f"</div>"
         )
 
-    svc_colors = {"netflix": "#E50914", "max": "#0056FF"}
+    svc_colors = {
+        "netflix":   "#E50914",
+        "max":       "#0056FF",
+        "disney":    "#113CCF",
+        "hulu":      "#1CE783",
+        "apple":     "#555555",
+        "peacock":   "#FF6B00",
+        "paramount": "#0064FF",
+        "tubi":      "#FF4500",
+    }
     svc_color  = svc_colors.get(service, "#444")
+    _svc_labels = {
+        "netflix": "Netflix", "max": "Max", "disney": "Disney+",
+        "hulu": "Hulu", "apple": "Apple TV+", "peacock": "Peacock",
+        "paramount": "Paramount+", "tubi": "Tubi",
+    }
     svc_badge  = (
         f"<span style='position:absolute; top:6px; right:6px; background:{svc_color}; "
         f"color:white; font-size:0.6rem; font-weight:800; padding:0.12rem 0.35rem; "
-        f"border-radius:3px; letter-spacing:0.04em;'>{service.title()}</span>"
+        f"border-radius:3px; letter-spacing:0.04em;'>{_svc_labels.get(service, service.title())}</span>"
     ) if service else ""
 
     imdb_badge = (

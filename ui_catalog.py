@@ -56,6 +56,7 @@ def render_recommend_tab() -> None:
     _svc_apple     = st.session_state.get("f_svc_apple",    False) or st.session_state.get("f_mob_svc_apple",    False)
     _svc_peacock   = st.session_state.get("f_svc_peacock",  False) or st.session_state.get("f_mob_svc_peacock",  False)
     _svc_paramount = st.session_state.get("f_svc_paramount",False) or st.session_state.get("f_mob_svc_paramount",False)
+    _svc_tubi      = st.session_state.get("f_svc_tubi",     False) or st.session_state.get("f_mob_svc_tubi",     False)
     _type_movies   = st.session_state.get("f_type_movies",  False) or st.session_state.get("f_mob_type_movies",  False)
     _type_tv       = st.session_state.get("f_type_tv",      False) or st.session_state.get("f_mob_type_tv",      False)
     _w_chai_seen     = st.session_state.get("f_w_chai_seen",     False) or st.session_state.get("f_mob_w_chai_seen",     False)
@@ -77,6 +78,7 @@ def render_recommend_tab() -> None:
         "Apple TV+":  "apple",
         "Peacock":    "peacock",
         "Paramount+": "paramount",
+        "Tubi":       "tubi",
     }
     services      = [k for k, v in [
         ("Netflix",    _svc_netflix),
@@ -86,6 +88,7 @@ def render_recommend_tab() -> None:
         ("Apple TV+",  _svc_apple),
         ("Peacock",    _svc_peacock),
         ("Paramount+", _svc_paramount),
+        ("Tubi",       _svc_tubi),
     ] if v]
     content_types = [t for t, v in [("Movies", _type_movies), ("TV Shows", _type_tv)] if v]
     _watch_sel    = [w for w, v in [
@@ -152,6 +155,7 @@ def render_recommend_tab() -> None:
                 st.checkbox("Apple TV+",   key="f_svc_apple")
                 st.checkbox("Peacock",     key="f_svc_peacock")
                 st.checkbox("Paramount+",  key="f_svc_paramount")
+                st.checkbox("Tubi",        key="f_svc_tubi")
         with fc_type:
             with st.popover(_type_lbl, use_container_width=True):
                 st.checkbox("Movies",   key="f_type_movies")
@@ -181,12 +185,12 @@ def render_recommend_tab() -> None:
             if st.button("Clear all", key="f_clear", disabled=not _any_active):
                 for _k in [
                     "f_svc_netflix", "f_svc_max", "f_svc_disney",
-                    "f_svc_hulu", "f_svc_apple", "f_svc_peacock", "f_svc_paramount",
+                    "f_svc_hulu", "f_svc_apple", "f_svc_peacock", "f_svc_paramount", "f_svc_tubi",
                     "f_type_movies", "f_type_tv",
                     "f_w_chai_seen", "f_w_chai_not_seen", "f_w_noel_seen", "f_w_noel_not_seen",
                     "f_imdb", "f_yr",
                     "f_mob_svc_netflix", "f_mob_svc_max", "f_mob_svc_disney",
-                    "f_mob_svc_hulu", "f_mob_svc_apple", "f_mob_svc_peacock", "f_mob_svc_paramount",
+                    "f_mob_svc_hulu", "f_mob_svc_apple", "f_mob_svc_peacock", "f_mob_svc_paramount", "f_mob_svc_tubi",
                     "f_mob_type_movies", "f_mob_type_tv",
                     "f_mob_w_chai_seen", "f_mob_w_chai_not_seen", "f_mob_w_noel_seen", "f_mob_w_noel_not_seen",
                     "f_mob_imdb", "f_mob_yr", "f_sort_mob",
@@ -203,7 +207,7 @@ def render_recommend_tab() -> None:
 
     # ── Mobile filter bar (CSS-hidden on desktop ≥769px) ──────────────────────
     _mob_active_count = sum([
-        _svc_netflix, _svc_max, _svc_disney, _svc_hulu, _svc_apple, _svc_peacock, _svc_paramount,
+        _svc_netflix, _svc_max, _svc_disney, _svc_hulu, _svc_apple, _svc_peacock, _svc_paramount, _svc_tubi,
         _type_movies, _type_tv,
         _w_chai_seen, _w_chai_not_seen, _w_noel_seen, _w_noel_not_seen,
         _imdb_val > 0, _yr_val != (1950, 2026),
@@ -234,6 +238,7 @@ def render_recommend_tab() -> None:
     if _svc_apple:       _active_chips.append(("Apple TV+",    "f_svc_apple",       "f_mob_svc_apple"))
     if _svc_peacock:     _active_chips.append(("Peacock",      "f_svc_peacock",     "f_mob_svc_peacock"))
     if _svc_paramount:   _active_chips.append(("Paramount+",   "f_svc_paramount",   "f_mob_svc_paramount"))
+    if _svc_tubi:        _active_chips.append(("Tubi",          "f_svc_tubi",        "f_mob_svc_tubi"))
     if _type_movies:     _active_chips.append(("Movies",       "f_type_movies",     "f_mob_type_movies"))
     if _type_tv:         _active_chips.append(("TV Shows",     "f_type_tv",         "f_mob_type_tv"))
     if _w_chai_seen:     _active_chips.append(("Chai: Seen",   "f_w_chai_seen",     "f_mob_w_chai_seen"))
