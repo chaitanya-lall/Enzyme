@@ -6,7 +6,8 @@ const GENRES = [
   'Horror', 'Mystery', 'Romance', 'Sci-Fi', 'Thriller', 'War',
 ];
 
-const SERVICES = ['All', 'Netflix', 'Hulu'];
+const SERVICES = ['All', 'Netflix', 'Max', 'Disney+', 'Hulu', 'Apple TV+', 'Peacock', 'Paramount+'];
+const SERVICE_KEYS = { 'Netflix': 'netflix', 'Max': 'max', 'Disney+': 'disney', 'Hulu': 'hulu', 'Apple TV+': 'apple', 'Peacock': 'peacock', 'Paramount+': 'paramount' };
 
 export default function FilterDrawer({ isOpen, onClose, filters, onChange, yearMin, yearMax }) {
   const YEAR_MIN = yearMin ?? 1950;
@@ -25,7 +26,7 @@ export default function FilterDrawer({ isOpen, onClose, filters, onChange, yearM
 
   const reset = () => {
     const defaultFilters = {
-      genre: 'All', service: 'All', sort: 'chai',
+      genre: 'All', service: 'All', type: 'All', sort: 'chai',
       chaiStatus: 'All', noelStatus: 'All',
       imdbMin: 0, yearMin: YEAR_MIN, yearMax: YEAR_MAX,
     };
@@ -135,6 +136,14 @@ export default function FilterDrawer({ isOpen, onClose, filters, onChange, yearM
           </div>
         </div>
 
+        {/* Type */}
+        <Section label="Type">
+          {['All', 'Movies', 'TV Shows'].map(t => (
+            <Chip key={t} label={t} active={localFilters.type === t}
+              onClick={() => setLocalFilters(f => ({ ...f, type: f.type === t ? 'All' : t }))} />
+          ))}
+        </Section>
+
         {/* Genre */}
         <Section label="Genre">
           {GENRES.map(g => (
@@ -144,9 +153,14 @@ export default function FilterDrawer({ isOpen, onClose, filters, onChange, yearM
 
         {/* Service */}
         <Section label="Streaming Service">
-          {SERVICES.map(s => (
-            <Chip key={s} label={s} active={localFilters.service === s} onClick={() => toggle('service', s)} />
-          ))}
+          {SERVICES.map(s => {
+            const key = s === 'All' ? 'All' : SERVICE_KEYS[s];
+            return (
+              <Chip key={s} label={s}
+                active={localFilters.service === key}
+                onClick={() => setLocalFilters(f => ({ ...f, service: f.service === key ? 'All' : key }))} />
+            );
+          })}
         </Section>
 
         {/* Apply */}

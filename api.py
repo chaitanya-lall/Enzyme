@@ -27,9 +27,6 @@ df = pd.read_parquet(os.path.join(BASE_DIR, 'data', 'catalog_data.parquet'))
 pg_df = pd.read_csv(os.path.join(BASE_DIR, 'data', 'parents_guide.csv'))
 seen = json.load(open(os.path.join(BASE_DIR, 'data', 'seen_ids.json')))
 
-# Movies only
-df = df[df['type'] == 'movie'].copy()
-
 chai_seen = set(seen.get('chai_seen', []))
 noel_seen = set(seen.get('noel_seen', []))
 
@@ -119,6 +116,7 @@ def _row_to_card(row):
         'noelScore': round(noel_pct) if noel_pct is not None else None,
         'imdbScore': round(float(imdb), 1) if imdb is not None else None,
         'service':   row['service'],
+        'type':      row['type'],
         'chaiSeen':  row['imdb_id'] in chai_seen,
         'noelSeen':  row['imdb_id'] in noel_seen,
     }
@@ -180,7 +178,7 @@ for _, _row in df.iterrows():
         _cards.append(_row_to_card(_row))
     except Exception as e:
         pass
-print(f"Catalog ready: {len(_cards)} movies")
+print(f"Catalog ready: {len(_cards)} titles")
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────

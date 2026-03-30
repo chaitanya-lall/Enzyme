@@ -6,7 +6,7 @@ import { fetchCatalog } from '../services/api';
 const YEAR_MIN = 1950;
 const YEAR_MAX = 2026;
 const DEFAULT_FILTERS = {
-  genre: 'All', service: 'All', sort: 'chai',
+  genre: 'All', service: 'All', type: 'All', sort: 'chai',
   chaiStatus: 'All', noelStatus: 'All',
   imdbMin: 0, yearMin: YEAR_MIN, yearMax: YEAR_MAX,
 };
@@ -29,6 +29,10 @@ export default function RecommendPage() {
   const filtered = useMemo(() => {
     let list = [...allMovies];
 
+    if (filters.type === 'Movies')
+      list = list.filter(m => m.type === 'movie');
+    if (filters.type === 'TV Shows')
+      list = list.filter(m => m.type === 'tv');
     if (filters.genre !== 'All')
       list = list.filter(m => m.genre.includes(filters.genre));
     if (filters.service !== 'All')
@@ -61,6 +65,7 @@ export default function RecommendPage() {
   const hasMore = visibleCount < filtered.length;
 
   const activeFilterCount = [
+    filters.type !== 'All',
     filters.genre !== 'All',
     filters.service !== 'All',
     filters.sort !== 'chai',
@@ -171,6 +176,9 @@ export default function RecommendPage() {
       {/* Active filter pills */}
       {activeFilterCount > 0 && (
         <div style={{ padding: '0 16px 12px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {filters.type !== 'All' && (
+            <FilterPill label={filters.type} onRemove={() => setFilters(f => ({ ...f, type: 'All' }))} />
+          )}
           {filters.genre !== 'All' && (
             <FilterPill label={filters.genre} onRemove={() => setFilters(f => ({ ...f, genre: 'All' }))} />
           )}
@@ -201,7 +209,7 @@ export default function RecommendPage() {
            filters.sort === 'imdb' ? 'Sorted by IMDb' : 'Newest First'}
         </span>
         <span style={{ fontSize: 11, color: '#484847', marginLeft: 4 }}>
-          {filtered.length} film{filtered.length !== 1 ? 's' : ''}
+          {filtered.length} title{filtered.length !== 1 ? 's' : ''}
         </span>
       </div>
 
