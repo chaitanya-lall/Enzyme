@@ -726,8 +726,19 @@ def run_seed(limit_per_service: int = 0,
                     df.loc[df["watchmode_id"] == wm_id, "streaming_url"] = url
                 time.sleep(0.25)
 
-    # 8. Save
+    # 8. Save — merge with existing catalog so a partial run never loses titles
+    #    that weren't re-fetched this run (e.g. when OMDb keys exhaust mid-way).
     os.makedirs(DATA_DIR, exist_ok=True)
+    if os.path.exists(CATALOG_PATH):
+        try:
+            prev_df = pd.read_parquet(CATALOG_PATH)
+            new_ids = set(df["imdb_id"])
+            prev_keep = prev_df[~prev_df["imdb_id"].isin(new_ids)]
+            df = pd.concat([prev_keep, df], ignore_index=True)
+            log.info(f"Merged: {len(prev_keep)} kept from previous + "
+                     f"{len(new_ids)} new/updated = {len(df)} total")
+        except Exception as e:
+            log.warning(f"Could not merge with existing catalog: {e}")
     df.to_parquet(CATALOG_PATH, index=False)
     log.info(f"Saved {len(df)} titles → {CATALOG_PATH}")
     return df
