@@ -1,19 +1,13 @@
 #!/bin/bash
-# daily_seed.sh — runs once per calendar day, on first laptop wake after midnight.
-# Triggered every 30 min by LaunchAgent; guard file prevents duplicate runs.
+# daily_seed.sh — run by cron at 2 AM daily.
+# 1. Fetches all streaming services via Watchmode
+# 2. Enriches new titles with OMDb metadata + ML scores
+# 3. Removes titles no longer on any service
+# 4. Pushes updated catalog + seen_ids to GitHub → triggers Render redeploy
 
-GUARD="/tmp/enzyme_seed_$(date +%Y-%m-%d).lock"
 LOG="/tmp/catalog_seed_daily.log"
 ENZYME_DIR="/Users/chaitanya.lall/Desktop/Enzyme"
 PYTHON="/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python"
-
-# Already ran today — exit silently
-if [ -f "$GUARD" ]; then
-    exit 0
-fi
-
-# Mark as running for today
-touch "$GUARD"
 
 echo "=== $(date) — Starting daily seed ===" >> "$LOG"
 
