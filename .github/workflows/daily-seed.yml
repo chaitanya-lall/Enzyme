@@ -35,7 +35,7 @@ jobs:
           OMDB_NOEL_KEY:       ${{ secrets.OMDB_NOEL_KEY }}
           GROQ_API_KEY:        ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY:      ${{ secrets.GEMINI_API_KEY }}
-        run: python catalog_seed.py --skip-urls --skip-rt
+        run: python catalog_seed.py --skip-urls
 
       - name: Commit and push updated catalog
         run: |
