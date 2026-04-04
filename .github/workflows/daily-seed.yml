@@ -2,13 +2,13 @@ name: Daily Catalog Seed
 
 on:
   schedule:
-    - cron: '0 8 * * *'   # 8 AM UTC = 2 AM CDT (runs on GitHub's servers, no laptop needed)
+    - cron: '0 2 * * *'   # 2 AM UTC = 9 PM CDT — keys reset at midnight UTC, safe from local usage
   workflow_dispatch:        # manual trigger from GitHub Actions tab
 
 jobs:
   seed:
     runs-on: ubuntu-latest
-    timeout-minutes: 360    # 6 hr ceiling for RT enrichment + ML scoring
+    timeout-minutes: 90     # --skip-rt means no web scraping; should finish in ~45 min
 
     steps:
       - name: Checkout repo
@@ -35,7 +35,7 @@ jobs:
           OMDB_NOEL_KEY:       ${{ secrets.OMDB_NOEL_KEY }}
           GROQ_API_KEY:        ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY:      ${{ secrets.GEMINI_API_KEY }}
-        run: python catalog_seed.py --skip-urls
+        run: python catalog_seed.py --skip-urls --skip-rt
 
       - name: Commit and push updated catalog
         run: |

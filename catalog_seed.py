@@ -474,7 +474,8 @@ def score_catalog_batch(recs: list[dict],
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 def run_seed(limit_per_service: int = 0,
-             skip_streaming_urls: bool = False) -> pd.DataFrame | None:
+             skip_streaming_urls: bool = False,
+             skip_rt: bool = False) -> pd.DataFrame | None:
     """Full pipeline: fetch → score → save parquet. Returns the DataFrame."""
 
     api_key = _get_watchmode_key()
@@ -550,6 +551,9 @@ def run_seed(limit_per_service: int = 0,
                     "award_noms": row.get("award_noms"),
                     "oscar_win":  row.get("oscar_win"),
                     "oscar_nom":  row.get("oscar_nom"),
+                    # RT fields — cached so we don't re-scrape on every run
+                    "Actors_RT":  row.get("actors_rt", ""),
+                    "Studio":     row.get("studio", ""),
                 }
                 # Flag for re-fetch if any extended field is missing
                 if row.get("box_office") is None:
@@ -632,18 +636,25 @@ def run_seed(limit_per_service: int = 0,
         rec["imdbID"]       = iid
         rec["service"]      = service_map.get(iid, "unknown")
         rec["watchmode_id"] = watchmode_id_map.get(iid)
-        # RT enrichment — mirrors predict.py so catalog scores match search scores
-        try:
-            rt_year = int(str(rec.get("Year") or 2000).split(".")[0])
-            rt_data = fetch_rt_data(rec["Title"], rt_year, sleep=True)
-        except Exception:
-            rt_data = None
-        if rt_data:
-            rec["Actors_RT"] = ", ".join(rt_data["cast_top5"])
-            rec["Studio"]    = rt_data["studio"] or rec.get("Production", "") or ""
+        # RT enrichment — only for new titles; cached titles carry Actors_RT/Studio
+        # from existing_omdb. Skip entirely when --skip-rt is passed (CI runs).
+        cached_rt  = raw.get("Actors_RT", "")
+        cached_stu = raw.get("Studio", "")
+        if skip_rt or cached_rt:
+            rec["Actors_RT"] = cached_rt
+            rec["Studio"]    = cached_stu or rec.get("Production", "") or ""
         else:
-            rec["Actors_RT"] = ""
-            rec["Studio"]    = rec.get("Production", "") or ""
+            try:
+                rt_year = int(str(rec.get("Year") or 2000).split(".")[0])
+                rt_data = fetch_rt_data(rec["Title"], rt_year, sleep=True)
+            except Exception:
+                rt_data = None
+            if rt_data:
+                rec["Actors_RT"] = ", ".join(rt_data["cast_top5"])
+                rec["Studio"]    = rt_data["studio"] or rec.get("Production", "") or ""
+            else:
+                rec["Actors_RT"] = ""
+                rec["Studio"]    = rec.get("Production", "") or ""
         enriched.append(rec)
 
     if not enriched:
@@ -710,6 +721,9 @@ def run_seed(limit_per_service: int = 0,
             "award_noms":    rec.get("award_noms"),
             "oscar_win":     rec.get("oscar_win"),
             "oscar_nom":     rec.get("oscar_nom"),
+            # RT-enriched fields — cached to avoid re-scraping on every run
+            "actors_rt":     rec.get("Actors_RT", ""),
+            "studio":        rec.get("Studio", ""),
             "last_updated":  datetime.now().isoformat(),
         })
 
@@ -751,5 +765,8 @@ if __name__ == "__main__":
                         help="Max titles per service (0 = all)")
     parser.add_argument("--skip-urls", action="store_true",
                         help="Skip streaming URL fetches (saves Watchmode quota)")
+    parser.add_argument("--skip-rt", action="store_true",
+                        help="Skip Rotten Tomatoes enrichment (faster CI runs)")
     args = parser.parse_args()
-    run_seed(limit_per_service=args.limit, skip_streaming_urls=args.skip_urls)
+    run_seed(limit_per_service=args.limit, skip_streaming_urls=args.skip_urls,
+             skip_rt=args.skip_rt)
