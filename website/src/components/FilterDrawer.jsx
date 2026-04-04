@@ -6,8 +6,8 @@ const GENRES = [
   'Horror', 'Mystery', 'Romance', 'Sci-Fi', 'Thriller', 'War',
 ];
 
-const SERVICES = ['All', 'Netflix', 'Max', 'Disney+', 'Hulu', 'Apple TV+', 'Peacock', 'Paramount+'];
-const SERVICE_KEYS = { 'Netflix': 'netflix', 'Max': 'max', 'Disney+': 'disney', 'Hulu': 'hulu', 'Apple TV+': 'apple', 'Peacock': 'peacock', 'Paramount+': 'paramount' };
+const SERVICES = ['All', 'Netflix', 'Prime Video', 'Max', 'Disney+', 'Hulu', 'Apple TV+', 'Peacock', 'Paramount+'];
+const SERVICE_KEYS = { 'Netflix': 'netflix', 'Prime Video': 'prime', 'Max': 'max', 'Disney+': 'disney', 'Hulu': 'hulu', 'Apple TV+': 'apple', 'Peacock': 'peacock', 'Paramount+': 'paramount' };
 
 export default function FilterDrawer({ isOpen, onClose, filters, onChange, yearMin, yearMax }) {
   const YEAR_MIN = yearMin ?? 1950;

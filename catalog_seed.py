@@ -142,7 +142,8 @@ def get_source_ids(api_key: str) -> dict[str, int]:
                                             and "amazon" not in name
                                             and "paramount" not in name):
             result.setdefault("max", s["id"])
-        # Prime Video excluded for now
+        elif ("prime video" in name or ("amazon" in name and "prime" in name)) and "channel" not in name:
+            result.setdefault("prime", s["id"])
         elif "disney" in name and "plus" in name:
             result.setdefault("disney", s["id"])
         elif "disney+" in name:
