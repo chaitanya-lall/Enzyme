@@ -21,3 +21,31 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+
+  - type: cron
+    name: enzyme-seed
+    runtime: python
+    schedule: "0 8 * * *"   # 8 AM UTC = 2 AM CDT every day
+    buildCommand: pip install -r requirements-seed.txt
+    startCommand: bash scripts/render_seed.sh
+    envVars:
+      - key: WATCHMODE_API_KEY
+        sync: false
+      - key: WATCHMODE_API_KEY_2
+        sync: false
+      - key: OMDB_API_KEY
+        sync: false
+      - key: OMDB_API_KEY_2
+        sync: false
+      - key: OMDB_API_KEY_5
+        sync: false
+      - key: OMDB_APP_KEY
+        sync: false
+      - key: OMDB_NOEL_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GITHUB_TOKEN    # Personal access token with repo scope — set in Render dashboard
+        sync: false
